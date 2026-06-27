@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Glider Acceptance Test</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      body {
+        margin: 0;
+        padding: 2rem clamp(1rem, 4vw, 3rem);
+        background: #0d1117;
+        color: #c9d1d9;
+        line-height: 1.5;
+      }
+      h1 {
+        font-size: 1.25rem;
+        margin: 0 0 0.25rem;
+      }
+      p.sub {
+        margin: 0 0 1.5rem;
+        color: #8b949e;
+      }
+      .result {
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        padding: 1rem 1.25rem;
+        margin: 0 0 1rem;
+        background: #161b22;
+      }
+      .result h2 {
+        font-size: 0.95rem;
+        margin: 0 0 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .badge {
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        padding: 0.15rem 0.5rem;
+        border-radius: 999px;
+        text-transform: uppercase;
+      }
+      .pass { background: #196c2e; color: #d5ffe0; }
+      .fail { background: #8c1c13; color: #ffd9d4; }
+      .pending { background: #30363d; color: #c9d1d9; }
+      .detail { color: #8b949e; font-size: 0.85rem; white-space: pre-wrap; margin: 0.25rem 0 0; }
+      .grids { display: flex; gap: 1.5rem; flex-wrap: wrap; margin-top: 0.75rem; }
+      .grid { font-size: 0.7rem; line-height: 1; }
+      .grid figcaption { color: #8b949e; margin-bottom: 0.4rem; }
+      pre.board { margin: 0; }
+      .on { color: #58a6ff; }
+      .off { color: #21262d; }
+      code { color: #79c0ff; }
+      a { color: #58a6ff; }
+    </style>
+  </head>
+  <body>
+    <h1>Glider acceptance test</h1>
+    <p class="sub">
+      Verifies B3/S23 correctness: a glider must translate exactly +1/+1 every 4 generations.
+      Serve this folder over HTTP (<code>python3 -m http.server</code>) so the harness can read
+      <code>index.html</code>'s optional <code>window.gameOfLifeStep</code> hook.
+    </p>
+
+    <div class="result" id="impl-result">
+      <h2>Your implementation <span class="badge pending" id="impl-badge">checking…</span></h2>
+      <p class="detail" id="impl-detail">Looking for <code>window.gameOfLifeStep</code> in ./index.html …</p>
+    </div>
+
+    <div class="result" id="ref-result">
+      <h2>Reference oracle <span class="badge pending" id="ref-badge">running…</span></h2>
+      <p class="detail" id="ref-detail"></p>
+      <div class="grids" id="ref-grids"></div>
+    </div>
+
+    <iframe id="app" src="./index.html" style="display:none" title="app under test"></iframe>
+
+    <script>
+      // ---- Pure reference implementation (hard-wall edges) --------------------
+      const SIZE = 40; // big enough that 20 generations never reach an edge
+
+      function emptyGrid(n) {
+        return Array.from({ length: n }, () => new Array(n).fill(0));
+      }
+
+      function placeGlider(grid, r, c) {
+        // .X.
+        // ..X
+        // XXX
+        const cells = [[0, 1], [1, 2], [2, 0], [2, 1], [2, 2]];
+        for (const [dr, dc] of cells) grid[r + dr][c + dc] = 1;
+        return grid;
+      }
+
+      function referenceStep(cells) {
+        const n = cells.length;
+        const next = emptyGrid(n);
+        for (let r = 0; r < n; r++) {
+          for (let c = 0; c < n; c++) {
+            let live = 0;
+            for (let dr = -1; dr <= 1; dr++) {
+              for (let dc = -1; dc <= 1; dc++) {
+                if (dr === 0 && dc === 0) continue;
+                const rr = r + dr, cc = c + dc;
+                if (rr >= 0 && rr < n && cc >= 0 && cc < n && cells[rr][cc]) live++;
+              }
+            }
+            next[r][c] = cells[r][c] ? (live === 2 || live === 3 ? 1 : 0) : (live === 3 ? 1 : 0);
+          }
+        }
+        return next;
+      }
+
+      function liveSet(grid) {
+        const s = new Set();
+        for (let r = 0; r < grid.length; r++)
+          for (let c = 0; c < grid[r].length; c++)
+            if (grid[r][c]) s.add(r + "," + c);
+        return s;
+      }
+
+      function setsEqual(a, b) {
+        if (a.size !== b.size) return false;
+        for (const v of a) if (!b.has(v)) return false;
+        return true;
+      }
+
+      // Run `stepFn` `gens` times from a glider at (startR,startC) and check the
+      // live cells equal the same glider translated by (+gens/4, +gens/4).
+      function runGliderTest(stepFn, gens) {
+        const start = [2, 2];
+        let grid = placeGlider(emptyGrid(SIZE), start[0], start[1]);
+        const offset = gens / 4; // glider moves +1/+1 per 4 generations
+        const expected = liveSet(placeGlider(emptyGrid(SIZE), start[0] + offset, start[1] + offset));
+        for (let i = 0; i < gens; i++) {
+          grid = stepFn(grid.map((row) => row.slice())); // pass a copy; never trust mutation
+          if (!grid || grid.length !== SIZE || grid[0].length !== SIZE) {
+            return { ok: false, reason: `step returned wrong shape at generation ${i + 1}` };
+          }
+        }
+        const got = liveSet(grid);
+        return { ok: setsEqual(got, expected), expected, got };
+      }
+
+      function evaluate(stepFn) {
+        const g4 = runGliderTest(stepFn, 4);
+        if (g4.reason) return { pass: false, msg: g4.reason };
+        const g20 = runGliderTest(stepFn, 20);
+        if (g20.reason) return { pass: false, msg: g20.reason };
+        return {
+          pass: g4.ok && g20.ok,
+          msg:
+            `4 generations  → +1/+1 translation: ${g4.ok ? "PASS" : "FAIL"}\n` +
+            `20 generations → +5/+5 translation: ${g20.ok ? "PASS" : "FAIL"}` +
+            (g4.ok && g20.ok ? "" : "\nThe glider deformed — neighbour counting or B3/S23 rules are wrong."),
+        };
+      }
+
+      function setBadge(id, pass) {
+        const el = document.getElementById(id);
+        el.className = "badge " + (pass ? "pass" : "fail");
+        el.textContent = pass ? "pass" : "fail";
+      }
+
+      // ---- Reference oracle (proves the test itself is correct) --------------
+      (function runReference() {
+        const res = evaluate(referenceStep);
+        setBadge("ref-badge", res.pass);
+        document.getElementById("ref-detail").textContent = res.msg;
+        renderReferenceGrids();
+      })();
+
+      function boardToText(grid, r0, c0, r1, c1) {
+        let out = "";
+        for (let r = r0; r <= r1; r++) {
+          for (let c = c0; c <= c1; c++) {
+            out += grid[r][c]
+              ? '<span class="on">█</span>'
+              : '<span class="off">·</span>';
+          }
+          out += "\n";
+        }
+        return out;
+      }
+
+      function renderReferenceGrids() {
+        let grid = placeGlider(emptyGrid(SIZE), 2, 2);
+        const snaps = { 0: null, 4: null };
+        for (let i = 0; i <= 4; i++) {
+          if (i in snaps) snaps[i] = grid.map((row) => row.slice());
+          grid = referenceStep(grid);
+        }
+        const host = document.getElementById("ref-grids");
+        for (const gen of [0, 4]) {
+          const fig = document.createElement("figure");
+          fig.className = "grid";
+          fig.innerHTML =
+            `<figcaption>generation ${gen}</figcaption>` +
+            `<pre class="board">${boardToText(snaps[gen], 1, 1, 8, 8)}</pre>`;
+          host.appendChild(fig);
+        }
+      }
+
+      // ---- Test the app's implementation, if it exposes the hook -------------
+      function checkImplementation() {
+        const detail = document.getElementById("impl-detail");
+        let win;
+        try {
+          win = document.getElementById("app").contentWindow;
+        } catch (e) {
+          win = null;
+        }
+
+        const stepFn = win && typeof win.gameOfLifeStep === "function" ? win.gameOfLifeStep : null;
+
+        if (!stepFn) {
+          document.getElementById("impl-badge").className = "badge pending";
+          document.getElementById("impl-badge").textContent = "no hook";
+          detail.innerHTML =
+            "No <code>window.gameOfLifeStep</code> found in ./index.html.\n" +
+            "Either it isn't implemented yet, the function isn't exposed, or your browser is\n" +
+            "blocking file:// iframe access — serve over HTTP and reload to test automatically.\n" +
+            "(The reference result below still shows the expected behaviour.)";
+          return;
+        }
+
+        let res;
+        try {
+          res = evaluate(stepFn);
+        } catch (e) {
+          setBadge("impl-badge", false);
+          detail.textContent = "gameOfLifeStep threw: " + (e && e.message ? e.message : e);
+          return;
+        }
+        setBadge("impl-badge", res.pass);
+        detail.textContent = res.msg;
+      }
+
+      const app = document.getElementById("app");
+      let tries = 0;
+      function pollForHook() {
+        let win = null;
+        try {
+          win = app.contentWindow;
+        } catch (e) {
+          win = null;
+        }
+        if (win && typeof win.gameOfLifeStep === "function") {
+          checkImplementation();
+        } else if (tries++ < 20) {
+          setTimeout(pollForHook, 150); // give the app a moment to define the hook
+        } else {
+          checkImplementation();
+        }
+      }
+      app.addEventListener("load", pollForHook);
+    </script>
+  </body>
+</html>
