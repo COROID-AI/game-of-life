@@ -19,7 +19,35 @@
     -->
     <main class="app">
       <h1>Conway&rsquo;s Game of Life</h1>
-      <!-- Simulation controls and speed slider are added by a later task. -->
+
+      <!-- Simulation controls and speed slider. -->
+      <div
+        id="toolbar"
+        class="toolbar"
+        role="toolbar"
+        aria-label="Simulation controls"
+      >
+        <button id="start-btn" type="button" aria-label="Start simulation">Start</button>
+        <button id="stop-btn" type="button" aria-label="Stop simulation">Stop</button>
+        <button id="step-btn" type="button" aria-label="Advance one generation">Step</button>
+        <button id="reset-btn" type="button" aria-label="Reset to initial pattern">Reset</button>
+        <button id="clear-btn" type="button" aria-label="Clear the grid">Clear</button>
+
+        <label class="speed-control" for="speed-slider">
+          <span class="speed-label">Speed</span>
+          <input
+            id="speed-slider"
+            type="range"
+            min="50"
+            max="1000"
+            step="10"
+            value="200"
+            aria-label="Tick interval in milliseconds"
+          />
+          <span id="speed-value" class="speed-value">200ms</span>
+        </label>
+      </div>
+
       <div id="grid" class="grid-container" aria-label="Game of Life grid"></div>
     </main>
     <script type="module" src="src/main.js"></script>
