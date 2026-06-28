@@ -6,6 +6,7 @@
 
 import { Grid, step } from './engine.js';
 import { DEFAULT_ROWS, DEFAULT_COLS, createGridView } from './ui.js';
+import { glider, loadPattern } from './patterns.js';
 
 const container = document.getElementById('grid');
 if (!container) {
@@ -189,6 +190,16 @@ speedSlider.addEventListener('input', () => {
   speedValue.textContent = `${state.tickIntervalMs}ms`;
   restartLoop();
 });
+
+// --- Seed the default pattern (glider) ------------------------------------
+// Place a glider at origin (1, 1) so the simulation shows a working shape
+// immediately on page load. The glider's SE trajectory over 20 generations
+// moves ~5 cells from (1,1) -> (~6,6), well inside the 40x40 viewport, so no
+// cells are lost to edge truncation. Uses setInitialGrid() so Reset returns
+// the glider (not an empty grid) and the snapshot is captured at seed time.
+const seededGrid = new Grid(DEFAULT_ROWS, DEFAULT_COLS);
+loadPattern(seededGrid, glider, [1, 1]);
+setInitialGrid(seededGrid);
 
 // Initial paint.
 render();
