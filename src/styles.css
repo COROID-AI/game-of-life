@@ -1,0 +1,11 @@
+/* Game of Life - application styles.
+   Subsequent tasks will add grid and control styling here. */
+
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  font-family: system-ui, sans-serif;
+  margin: 0;
+}
