@@ -91,3 +91,42 @@ python3 -m http.server 8000
 ```
 
 If `window.gameOfLifeStep` is exposed, the harness tests your implementation directly. Otherwise it falls back to verifying the reference rules so you can see exactly what "correct" looks like.
+
+---
+
+## How to Run
+
+The app is a single self-contained `index.html` with no build step. Launch a local server with:
+
+```bash
+npm start
+```
+
+This runs `npx serve -l 3000 .` and serves the project at **http://localhost:3000**. Open that URL in any modern browser to start the simulation.
+
+> No `npm install` is required — `npm start` fetches `serve` on demand via `npx`.
+
+**Offline alternative:** because the file is fully self-contained, you can also open `index.html` directly from disk (`file://`) in a browser and it will work without a server.
+
+## Features
+
+The simulation ships with the following controls (shown in the toolbar above the grid):
+
+| Control | Action |
+| --- | --- |
+| **Start** | Begins auto-advancing the simulation generation by generation. |
+| **Stop** | Pauses the auto-advance; the grid stays editable while stopped. |
+| **Step** | Advances exactly one generation while paused. |
+| **Reset** | Restores the grid to the default seed pattern (the glider). |
+| **Clear** | Empties the grid entirely (all cells dead). |
+| **Speed** | Slider that sets the delay between generations (shown in ms); slide left for slower, right for faster. |
+
+**Drawing:** while stopped, click and drag on the grid to toggle cells on/off.
+
+**Default seed:** on load (and after **Reset**) the grid is seeded with a single **glider** in the top-left area, so the simulation is ready to run immediately:
+
+```
+.X.
+..X
+XXX
+```
