@@ -106,3 +106,10 @@ body {
   outline: 2px solid #34d399;
   outline-offset: 2px;
 }
+
+.attribution {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #64748b;
+  text-align: center;
+}
