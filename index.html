@@ -27,11 +27,13 @@
         role="toolbar"
         aria-label="Simulation controls"
       >
-        <button id="start-btn" type="button" aria-label="Start simulation">Start</button>
-        <button id="stop-btn" type="button" aria-label="Stop simulation">Stop</button>
+        <button id="start-btn" type="button" aria-label="Start simulation" aria-pressed="false">Start</button>
+        <button id="stop-btn" type="button" aria-label="Stop simulation" aria-pressed="true">Stop</button>
         <button id="step-btn" type="button" aria-label="Advance one generation">Step</button>
         <button id="reset-btn" type="button" aria-label="Reset to initial pattern">Reset</button>
         <button id="clear-btn" type="button" aria-label="Clear the grid">Clear</button>
+        <button id="zoom-in-btn" type="button" aria-label="Zoom in">Zoom In</button>
+        <button id="zoom-out-btn" type="button" aria-label="Zoom out">Zoom Out</button>
 
         <label class="speed-control" for="speed-slider">
           <span class="speed-label">Speed</span>

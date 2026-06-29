@@ -63,6 +63,23 @@ body {
   background: #475569;
 }
 
+/*
+ * Active toggle state for Start/Stop. The currently-active control gets a
+ * distinct emerald background + matching border so the running/paused state
+ * is observable without console inspection. Driven by the .is-active class
+ * and mirrored to aria-pressed for assistive tech.
+ */
+.toolbar button.is-active {
+  background: #065f46;
+  border-color: #34d399;
+  color: #ecfdf5;
+}
+
+.toolbar button.is-active:hover {
+  background: #047857;
+  border-color: #6ee7b7;
+}
+
 .speed-control {
   display: inline-flex;
   align-items: center;

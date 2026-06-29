@@ -105,6 +105,76 @@ export const patterns = {
 };
 
 /**
+ * Pattern variants used for random seeding on page load. Each entry is a
+ * [id, pattern] pair so the chosen id can be reported back to the caller.
+ * Kept as a stable, ordered list so selection is deterministic per index.
+ *
+ * @type {Array<[string, number[][]]>}
+ */
+export const patternVariants = [
+  ['glider', glider],
+  ['blinker', blinker],
+  ['block', block],
+  ['gosper-glider-gun', gosperGliderGun],
+];
+
+/**
+ * Compute the bounding box [rows, cols] of a pattern's live cells.
+ *
+ * @param {number[][]} pattern - array of [row, col] offsets.
+ * @returns {[number, number]} [height, width] in cells; [0, 0] if empty.
+ */
+export function patternBounds(pattern) {
+  if (!Array.isArray(pattern) || pattern.length === 0) return [0, 0];
+  let maxRow = 0;
+  let maxCol = 0;
+  for (const [r, c] of pattern) {
+    if (r > maxRow) maxRow = r;
+    if (c > maxCol) maxCol = c;
+  }
+  // +1 because offsets are zero-based indices.
+  return [maxRow + 1, maxCol + 1];
+}
+
+/**
+ * Pick a random pattern variant that fits within the given grid dimensions.
+ * Returns the chosen [id, pattern] pair. Variants whose bounding box
+ * exceeds the grid are skipped (safety net for small grids).
+ *
+ * @param {number} [rows] - grid row count (default Infinity = no filter).
+ * @param {number} [cols] - grid col count (default Infinity = no filter).
+ * @returns {[string, number[][]]} [id, pattern] pair.
+ */
+export function pickRandomPattern(rows = Infinity, cols = Infinity) {
+  const fitting = patternVariants.filter(([id, pattern]) => {
+    const [h, w] = patternBounds(pattern);
+    return h <= rows && w <= cols;
+  });
+  const pool = fitting.length > 0 ? fitting : patternVariants;
+  const idx = Math.floor(Math.random() * pool.length);
+  return pool[idx];
+}
+
+/**
+ * Place a pattern onto a grid centered within the given dimensions.
+ *
+ * The pattern's bounding box is computed and the origin is chosen so the
+ * shape sits in the middle of the grid. Cells that fall outside the grid
+ * are skipped by loadPattern (clamped to bounds). The grid is mutated in
+ * place and also returned for chaining.
+ *
+ * @param {import('./engine.js').Grid} grid - target grid (mutated).
+ * @param {number[][]} pattern - array of [row, col] live-cell offsets.
+ * @returns {import('./engine.js').Grid} the same grid instance.
+ */
+export function placeAtCenter(grid, pattern) {
+  const [h, w] = patternBounds(pattern);
+  const originRow = Math.max(0, Math.floor((grid.rows - h) / 2));
+  const originCol = Math.max(0, Math.floor((grid.cols - w) / 2));
+  return loadPattern(grid, pattern, [originRow, originCol]);
+}
+
+/**
  * Place a pattern onto a grid by translating each [row, col] coordinate by
  * the given origin and marking those cells alive.
  *

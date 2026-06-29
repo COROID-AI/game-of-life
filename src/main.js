@@ -6,7 +6,7 @@
 
 import { Grid, step } from './engine.js';
 import { DEFAULT_ROWS, DEFAULT_COLS, createGridView } from './ui.js';
-import { glider, loadPattern } from './patterns.js';
+import { pickRandomPattern, placeAtCenter } from './patterns.js';
 
 const container = document.getElementById('grid');
 if (!container) {
@@ -71,6 +71,25 @@ function stepOnce() {
 }
 
 /**
+ * Sync the Start/Stop buttons' active appearance with the running state.
+ * Start is active (highlighted + aria-pressed) while running; Stop is
+ * active while paused. Visual state is observable without console inspection.
+ */
+function syncRunButtons() {
+  if (state.running) {
+    startBtn.classList.add('is-active');
+    startBtn.setAttribute('aria-pressed', 'true');
+    stopBtn.classList.remove('is-active');
+    stopBtn.setAttribute('aria-pressed', 'false');
+  } else {
+    startBtn.classList.remove('is-active');
+    startBtn.setAttribute('aria-pressed', 'false');
+    stopBtn.classList.add('is-active');
+    stopBtn.setAttribute('aria-pressed', 'true');
+  }
+}
+
+/**
  * Begin the tick loop. Idempotent: a no-op when already running. Always
  * clears any existing interval before starting a fresh one so re-entry
  * (e.g. after a speed change) never leaks intervals.
@@ -82,6 +101,7 @@ function startLoop() {
   }
   state.running = true;
   state.timerId = setInterval(stepOnce, state.tickIntervalMs);
+  syncRunButtons();
 }
 
 /**
@@ -94,6 +114,7 @@ function stopLoop() {
     state.timerId = null;
   }
   state.running = false;
+  syncRunButtons();
 }
 
 /**
@@ -172,6 +193,8 @@ const stopBtn = getById('stop-btn');
 const stepBtn = getById('step-btn');
 const resetBtn = getById('reset-btn');
 const clearBtn = getById('clear-btn');
+const zoomInBtn = getById('zoom-in-btn');
+const zoomOutBtn = getById('zoom-out-btn');
 const speedSlider = /** @type {HTMLInputElement} */ (getById('speed-slider'));
 const speedValue = getById('speed-value');
 
@@ -185,24 +208,34 @@ stepBtn.addEventListener('click', () => {
 resetBtn.addEventListener('click', resetGrid);
 clearBtn.addEventListener('click', clearGrid);
 
+// Zoom re-renders the current grid so the new cell size is visible at once.
+zoomInBtn.addEventListener('click', () => {
+  state.view.zoomIn(state.grid.cells);
+});
+zoomOutBtn.addEventListener('click', () => {
+  state.view.zoomOut(state.grid.cells);
+});
+
 speedSlider.addEventListener('input', () => {
   state.tickIntervalMs = Number(speedSlider.value);
   speedValue.textContent = `${state.tickIntervalMs}ms`;
   restartLoop();
 });
 
-// --- Seed the default pattern (glider) ------------------------------------
-// Place a glider at origin (1, 1) so the simulation shows a working shape
-// immediately on page load. The glider's SE trajectory over 20 generations
-// moves ~5 cells from (1,1) -> (~6,6), well inside the 40x40 viewport, so no
-// cells are lost to edge truncation. Uses setInitialGrid() so Reset returns
-// the glider (not an empty grid) and the snapshot is captured at seed time.
+// --- Seed a random pattern variant on load -------------------------------
+// Pick one of the named variants (glider, blinker, block, gosper) at random
+// and center it on the grid. The chosen pattern is captured as the initial
+// snapshot via setInitialGrid(), so Reset restores THIS pattern (not always
+// the glider) for the lifetime of the session. Different reloads produce
+// different starting patterns.
+const [seedPatternId, seedPattern] = pickRandomPattern(DEFAULT_ROWS, DEFAULT_COLS);
 const seededGrid = new Grid(DEFAULT_ROWS, DEFAULT_COLS);
-loadPattern(seededGrid, glider, [1, 1]);
+placeAtCenter(seededGrid, seedPattern);
 setInitialGrid(seededGrid);
 
-// Initial paint.
+// Initial paint + button state.
 render();
+syncRunButtons();
 
 // Expose a controller API for downstream tasks (seeding) and for the
 // optional grading harness.

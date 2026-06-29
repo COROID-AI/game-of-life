@@ -14,9 +14,14 @@ export const DEFAULT_ROWS = 40;
 export const DEFAULT_COLS = 40;
 
 /** Logical size of a single cell in CSS pixels. @type {number} */
-const CELL_SIZE = 14;
+const DEFAULT_CELL_SIZE = 14;
 /** Width of the grid line between cells in CSS pixels. @type {number} */
 const GRID_LINE_WIDTH = 1;
+/** Min/max cell size for zoom clamping (inclusive). @type {number} */
+export const MIN_CELL_SIZE = 4;
+export const MAX_CELL_SIZE = 28;
+/** Per-click zoom delta in CSS pixels. @type {number} */
+const ZOOM_STEP = 2;
 
 /**
  * Resolve a canvas pixel coordinate to a grid (row, col) coordinate.
@@ -25,8 +30,8 @@ const GRID_LINE_WIDTH = 1;
  * @param {number} y - canvas-space y (CSS pixels).
  * @returns {{ row: number, col: number }}
  */
-function pixelToCell(x, y) {
-  const stride = CELL_SIZE + GRID_LINE_WIDTH;
+function pixelToCell(x, y, cellSize) {
+  const stride = cellSize + GRID_LINE_WIDTH;
   const col = Math.floor(x / stride);
   const row = Math.floor(y / stride);
   return { row, col };
@@ -40,11 +45,11 @@ function pixelToCell(x, y) {
  * @param {number} cols
  * @returns {HTMLCanvasElement}
  */
-function createCanvas(rows, cols) {
+function createCanvas(rows, cols, cellSize) {
   const canvas = document.createElement('canvas');
   canvas.className = 'life-canvas';
-  canvas.width = cols * (CELL_SIZE + GRID_LINE_WIDTH) + GRID_LINE_WIDTH;
-  canvas.height = rows * (CELL_SIZE + GRID_LINE_WIDTH) + GRID_LINE_WIDTH;
+  canvas.width = cols * (cellSize + GRID_LINE_WIDTH) + GRID_LINE_WIDTH;
+  canvas.height = rows * (cellSize + GRID_LINE_WIDTH) + GRID_LINE_WIDTH;
   canvas.setAttribute('role', 'img');
   canvas.setAttribute('aria-label', `Game of Life grid, ${rows} by ${cols} cells`);
   canvas.tabIndex = 0;
@@ -77,8 +82,9 @@ export class GridView {
     this.rows = rows;
     this.cols = cols;
     this.onToggle = typeof onToggle === 'function' ? onToggle : null;
+    this.cellSize = DEFAULT_CELL_SIZE;
 
-    this.canvas = createCanvas(rows, cols);
+    this.canvas = createCanvas(rows, cols, this.cellSize);
     this.ctx = this.canvas.getContext('2d');
     container.appendChild(this.canvas);
 
@@ -92,8 +98,8 @@ export class GridView {
    * @param {Int8Array|number[]} cells - flat cell array of length rows*cols.
    */
   draw(cells) {
-    const { ctx, rows, cols } = this;
-    const stride = CELL_SIZE + GRID_LINE_WIDTH;
+    const { ctx, rows, cols, cellSize } = this;
+    const stride = cellSize + GRID_LINE_WIDTH;
 
     // Background (dead cells / grid lines).
     ctx.fillStyle = '#111827'; // slate-800
@@ -107,12 +113,61 @@ export class GridView {
           ctx.fillRect(
             GRID_LINE_WIDTH + c * stride,
             GRID_LINE_WIDTH + r * stride,
-            CELL_SIZE,
-            CELL_SIZE,
+            cellSize,
+            cellSize,
           );
         }
       }
     }
+  }
+
+  /**
+   * Current cell size in CSS pixels (read-only accessor).
+   * @returns {number}
+   */
+  getCellSize() {
+    return this.cellSize;
+  }
+
+  /**
+   * Set a new cell size, clamped to [MIN_CELL_SIZE, MAX_CELL_SIZE].
+   * Resizes the canvas backing store and immediately re-renders the last
+   * drawn grid so the change is visible on the same frame (no flash).
+   *
+   * @param {number} size - desired cell size in CSS pixels.
+   * @param {Int8Array|number[]} [cells] - current cell array to redraw.
+   * @returns {number} the clamped cell size actually applied.
+   */
+  setCellSize(size, cells) {
+    const clamped = Math.min(
+      MAX_CELL_SIZE,
+      Math.max(MIN_CELL_SIZE, Math.round(size)),
+    );
+    if (clamped === this.cellSize) return clamped;
+    this.cellSize = clamped;
+    // Resize backing store to match the new cell size.
+    this.canvas.width = this.cols * (clamped + GRID_LINE_WIDTH) + GRID_LINE_WIDTH;
+    this.canvas.height = this.rows * (clamped + GRID_LINE_WIDTH) + GRID_LINE_WIDTH;
+    if (cells) this.draw(cells);
+    return clamped;
+  }
+
+  /**
+   * Zoom in by ZOOM_STEP px (clamped). Redraws the given cells.
+   * @param {Int8Array|number[]} [cells]
+   * @returns {number} the new cell size.
+   */
+  zoomIn(cells) {
+    return this.setCellSize(this.cellSize + ZOOM_STEP, cells);
+  }
+
+  /**
+   * Zoom out by ZOOM_STEP px (clamped). Redraws the given cells.
+   * @param {Int8Array|number[]} [cells]
+   * @returns {number} the new cell size.
+   */
+  zoomOut(cells) {
+    return this.setCellSize(this.cellSize - ZOOM_STEP, cells);
   }
 
   /**
@@ -185,7 +240,7 @@ export class GridView {
     const x = (event.clientX - rect.left) * scaleX;
     const y = (event.clientY - rect.top) * scaleY;
 
-    const { row, col } = pixelToCell(x, y);
+    const { row, col } = pixelToCell(x, y, this.cellSize);
     if (row < 0 || row >= this.rows || col < 0 || col >= this.cols) return;
 
     const key = `${row},${col}`;
