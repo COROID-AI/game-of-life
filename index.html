@@ -1036,7 +1036,9 @@
       paintValue = state.grid[cell.r][cell.c] ? 0 : 1;
       applyPaint(cell.r, cell.c);
       lastCellKey = cell.r + ':' + cell.c;
-      if (canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
+      if (canvas.setPointerCapture) {
+        try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* pointer already released */ }
+      }
     }
 
     function onPointerMove(e) {
@@ -1107,7 +1109,7 @@
 
     /* ---------- bootstrap ---------- */
 
-    function $(id) { return document.getElementById(id); }
+    function $(id) { return document.getElementById(String(id).replace(/^#/, '')); }
 
     function debounce(fn, ms) {
       var t = null;
