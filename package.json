@@ -1,0 +1,12 @@
+{
+  "name": "game-of-life",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Single-file Conway's Game of Life browser game",
+  "scripts": {
+    "security": "node scripts/security-check.js"
+  },
+  "engines": {
+    "node": ">=16"
+  }
+}

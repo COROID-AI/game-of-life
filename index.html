@@ -1,20 +1,991 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Game of Life</title>
-  </head>
-  <body>
-    <!--
-      Implement Conway's Game of Life here, following README.md.
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Game of Life — Conway's Cellular Automaton</title>
+  <meta name="description" content="An interactive Conway's Game of Life with a pattern library, speed control, toroidal wrap and touch painting." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%23101014'/><rect x='3' y='3' width='4' height='4' fill='%23ffb454'/><rect x='9' y='9' width='4' height='4' fill='%23ffb454'/></svg>" />
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg-1: #17171d;
+      --bg-2: #0c0c10;
+      --panel: #1e1e26;
+      --panel-2: #15151c;
+      --border: #2c2c38;
+      --border-strong: #45455a;
+      --text: #f2f0f6;
+      --muted: #a6a2b3;
+      --accent: #ffb454;
+      --accent-soft: rgba(255, 180, 84, 0.13);
+      --radius: 14px;
+      --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    }
 
-      Everything (HTML, CSS, JS) must live in this single file:
-        - no external requests, no libraries, no build step
-        - must run from file:// offline
+    * { box-sizing: border-box; }
 
-      Optional: expose `window.gameOfLifeStep(cells)` so glider-test.html
-      can verify your rules automatically (see README.md).
-    -->
-  </body>
+    html, body { height: 100%; }
+
+    body {
+      margin: 0;
+      font-family: var(--font);
+      color: var(--text);
+      background:
+        radial-gradient(1100px 650px at 75% -10%, rgba(255, 180, 84, 0.07), transparent 60%),
+        radial-gradient(900px 600px at 8% 112%, rgba(255, 140, 66, 0.05), transparent 60%),
+        linear-gradient(180deg, var(--bg-1), var(--bg-2));
+      display: flex;
+      flex-direction: column;
+      min-height: 100dvh;
+    }
+
+    /* ---------- Header ---------- */
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+      padding: 16px 22px 10px;
+    }
+    .brand h1 {
+      margin: 0;
+      font-size: 1.32rem;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+    }
+    .brand h1 .accent { color: var(--accent); }
+    .tagline {
+      margin: 2px 0 0;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    .stats {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 7px 16px;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+    }
+    .stats b { color: var(--accent); font-weight: 600; }
+    .stats .sep { opacity: 0.4; }
+
+    /* ---------- Toolbar ---------- */
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 22px 14px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      font: inherit;
+      font-size: 0.82rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s, box-shadow 0.15s, transform 0.05s;
+    }
+    .btn:hover { border-color: var(--border-strong); background: var(--panel-2); }
+    .btn:active { transform: translateY(1px); }
+    .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .btn.primary {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+    .btn.primary:hover { box-shadow: 0 0 0 3px rgba(46, 230, 214, 0.12); }
+    .btn .ic { display: inline-flex; }
+    .btn svg { width: 14px; height: 14px; display: block; }
+
+    .divider { width: 1px; height: 24px; background: var(--border); margin: 0 2px; }
+
+    .field {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 0.78rem;
+      white-space: nowrap;
+    }
+    select {
+      background: var(--panel);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 7px 10px;
+      font: inherit;
+      font-size: 0.82rem;
+      cursor: pointer;
+    }
+    select:hover { border-color: var(--border-strong); }
+    select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+    input[type="range"] {
+      width: 116px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+    .speed-value {
+      font-family: var(--mono);
+      font-size: 0.76rem;
+      color: var(--text);
+      min-width: 34px;
+    }
+
+    .switch-field { cursor: pointer; }
+    .switch { position: relative; display: inline-block; width: 34px; height: 20px; flex: none; }
+    .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+    .switch .track {
+      position: absolute;
+      inset: 0;
+      background: var(--border-strong);
+      border-radius: 999px;
+      transition: background 0.15s;
+    }
+    .switch .track::before {
+      content: "";
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      left: 3px;
+      top: 3px;
+      border-radius: 50%;
+      background: #c7d2ea;
+      transition: transform 0.15s, background 0.15s;
+    }
+    .switch input:checked + .track { background: var(--accent); }
+    .switch input:checked + .track::before { transform: translateX(14px); background: #2b1c08; }
+    .switch input:focus-visible + .track { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    /* ---------- Board ---------- */
+    .board-wrap {
+      flex: 1;
+      min-height: 0;
+      margin: 0 22px;
+      position: relative;
+      border-radius: var(--radius);
+      border: 2px solid var(--border);
+      background: #0b0b10;
+      box-shadow: inset 0 0 90px rgba(0, 0, 0, 0.6), 0 8px 22px rgba(0, 0, 0, 0.3);
+      overflow: hidden;
+    }
+    #board {
+      position: absolute;
+      inset: 0;
+      display: block;
+      touch-action: none;
+      cursor: crosshair;
+    }
+
+    /* ---------- Footer hint ---------- */
+    .hint {
+      padding: 12px 22px 18px;
+      color: var(--muted);
+      font-size: 0.76rem;
+      text-align: center;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      gap: 6px 10px;
+    }
+    .hint kbd {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-bottom-width: 2px;
+      border-radius: 6px;
+      padding: 1px 6px;
+    }
+    .hint .hint-sep { opacity: 0.35; }
+
+    @media (max-width: 720px) {
+      .topbar { padding: 12px 14px 8px; }
+      .toolbar { padding: 8px 14px 12px; }
+      .board-wrap { margin: 0 14px; }
+      .hint { padding: 10px 14px 14px; }
+      .tagline { display: none; }
+      .stats { margin-left: 0; }
+      .divider { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1>Game<span class="accent">·</span>of<span class="accent">·</span>Life</h1>
+      <p class="tagline">Conway&rsquo;s cellular automaton &mdash; B3/S23</p>
+    </div>
+    <div class="stats" id="stats" aria-live="polite">
+      <span>Gen <b id="gen">0</b></span>
+      <span class="sep">&middot;</span>
+      <span>Pop <b id="pop">0</b></span>
+    </div>
+  </header>
+
+  <div class="toolbar" role="toolbar" aria-label="Simulation controls">
+    <button class="btn primary" id="btn-play" type="button" title="Play / Pause (Space)">
+      <span class="ic" id="play-icon"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.6v10.8c0 .6.7 1 1.2.6l8-5.4c.4-.3.4-.9 0-1.2l-8-5.4c-.5-.4-1.2 0-1.2.6z" fill="currentColor"/></svg></span>
+      <span id="play-label">Play</span>
+    </button>
+    <button class="btn" id="btn-step" type="button" title="Step one generation (&rarr;)">
+      <span class="ic"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2.6v10.8c0 .6.7 1 1.2.6l7.3-5.4c.4-.3.4-.9 0-1.2L4.2 2c-.5-.4-1.2 0-1.2.6z" fill="currentColor"/><rect x="12.6" y="2.5" width="2" height="11" rx="0.9" fill="currentColor"/></svg></span>
+      <span>Step</span>
+    </button>
+    <span class="divider" aria-hidden="true"></span>
+    <button class="btn" id="btn-clear" type="button" title="Clear the board (C)">
+      <span class="ic"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.6 4h10.8M6.4 4V2.7h3.2V4M4.2 4l.7 9.1c.05.5.5.9 1 .9h4.2c.5 0 .95-.4 1-.9L11.8 4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      <span>Clear</span>
+    </button>
+    <button class="btn" id="btn-random" type="button" title="Randomize the board (R)">
+      <span class="ic"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="2.6" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="6" cy="6" r="1.05" fill="currentColor"/><circle cx="10" cy="10" r="1.05" fill="currentColor"/></svg></span>
+      <span>Randomize</span>
+    </button>
+    <span class="divider" aria-hidden="true"></span>
+    <label class="field">
+      <span>Pattern</span>
+      <select id="pattern-select" title="Stamp a pattern onto the grid">
+        <option value="paint">Brush (draw)</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>Grid</span>
+      <select id="size-select" title="Grid size">
+        <option value="60x40">60 &times; 40</option>
+        <option value="100x60">100 &times; 60</option>
+        <option value="200x120">200 &times; 120</option>
+      </select>
+    </label>
+    <span class="divider" aria-hidden="true"></span>
+    <label class="field">
+      <span>Speed</span>
+      <input type="range" id="speed-input" min="1" max="30" step="1" value="10" title="Generations per second" />
+      <span class="speed-value" id="speed-label">10/s</span>
+    </label>
+    <label class="field switch-field" title="Toggle toroidal wrap (T)">
+      <span>Toroidal</span>
+      <span class="switch">
+        <input type="checkbox" id="toroidal-toggle" />
+        <span class="track"></span>
+      </span>
+    </label>
+  </div>
+
+  <main class="board-wrap" id="board-wrap">
+    <canvas id="board" aria-label="Game of Life board"></canvas>
+  </main>
+
+  <footer class="hint">
+    <span>Draw: click or drag on the grid while paused</span>
+    <span class="hint-sep">&middot;</span>
+    <span>Pick a pattern, then click to stamp it</span>
+    <span class="hint-sep">&middot;</span>
+    <span><kbd>Space</kbd> play/pause &nbsp;<kbd>&rarr;</kbd> step &nbsp;<kbd>C</kbd> clear &nbsp;<kbd>R</kbd> randomize &nbsp;<kbd>T</kbd> toroidal &nbsp;<kbd>Esc</kbd> brush</span>
+  </footer>
+
+  <script>
+    'use strict';
+
+    /* =====================================================================
+       Conway's Game of Life — single-file implementation.
+       Rules: B3/S23 with 8-neighbour (Moore) adjacency.
+       Edge behaviour: hard walls by default; the app offers a toroidal
+       (wrap-around) toggle. The window.gameOfLifeStep hook always uses
+       hard walls so it matches glider-test.html's reference oracle.
+       ===================================================================== */
+
+    // Pure step function. `wrap` selects toroidal edges. Never mutates input.
+    function nextGeneration(cells, wrap) {
+      const R = cells.length;
+      const C = R ? cells[0].length : 0;
+      const next = new Array(R);
+      for (let r = 0; r < R; r++) {
+        const row = new Array(C);
+        for (let c = 0; c < C; c++) {
+          let neighbours = 0;
+          for (let dr = -1; dr <= 1; dr++) {
+            for (let dc = -1; dc <= 1; dc++) {
+              if (dr === 0 && dc === 0) continue;
+              let nr = r + dr;
+              let nc = c + dc;
+              if (nr < 0 || nr >= R || nc < 0 || nc >= C) {
+                if (!wrap) continue;
+                nr = (nr + R) % R;
+                nc = (nc + C) % C;
+              }
+              neighbours += cells[nr][nc] ? 1 : 0;
+            }
+          }
+          row[c] = cells[r][c]
+            ? (neighbours === 2 || neighbours === 3 ? 1 : 0)
+            : (neighbours === 3 ? 1 : 0);
+        }
+        next[r] = row;
+      }
+      return next;
+    }
+
+    // Grading hook used by glider-test.html (hard-wall edges).
+    function gameOfLifeStep(cells) {
+      return nextGeneration(cells, false);
+    }
+    if (typeof window !== 'undefined') {
+      window.gameOfLifeStep = gameOfLifeStep;
+    }
+
+    /* ---------------------------------------------------------------------
+       Interactive app (DOM). Skipped automatically when run outside a
+       browser (e.g. in Node tests of the pure logic above).
+       ------------------------------------------------------------------- */
+    (function () {
+      if (typeof document === 'undefined') return;
+
+      const $ = (id) => document.getElementById(id);
+      const canvas = $('board');
+      const ctx = canvas && canvas.getContext('2d');
+      if (!ctx) return;
+
+      const boardWrap = $('board-wrap');
+      const genEl = $('gen');
+      const popEl = $('pop');
+      const playBtn = $('btn-play');
+      const playIcon = $('play-icon');
+      const playLabel = $('play-label');
+      const stepBtn = $('btn-step');
+      const clearBtn = $('btn-clear');
+      const randomBtn = $('btn-random');
+      const patternSel = $('pattern-select');
+      const sizeSel = $('size-select');
+      const speedInput = $('speed-input');
+      const speedLabel = $('speed-label');
+      const toroidalChk = $('toroidal-toggle');
+
+      const STORE_KEY = 'game-of-life-v1';
+      const GRID_SIZES = { '60x40': [60, 40], '100x60': [100, 60], '200x120': [200, 120] };
+
+      // ---- Board state -------------------------------------------------
+      let cols = 60;
+      let rows = 40;
+      let grid = [];
+      let age = null;        // Uint8Array(rows*cols) — cell age (fresh-birth glow)
+      let trail = null;      // Float32Array(rows*cols) — fading ghost of dead cells
+      let generation = 0;
+      let population = 0;
+
+      // ---- Controls ----------------------------------------------------
+      let running = false;
+      let speed = 10;            // generations per second
+      let toroidal = false;
+      let brushMode = 'paint';   // 'paint' or a pattern key
+
+      // ---- Rendering ---------------------------------------------------
+      let dpr = 1;
+      let cssW = 0;
+      let cssH = 0;
+      let cellPx = 0;            // cell size in device pixels
+      let ox = 0;
+      let oy = 0;                // grid origin in device pixels
+      let img = null;            // ImageData backing buffer
+
+      // ---- Animation ---------------------------------------------------
+      let rafId = null;
+      let lastFrame = 0;
+      let acc = 0;
+      let lastSave = 0;
+
+      // ---- Painting ----------------------------------------------------
+      let painting = false;
+      let paintMode = 1;         // 1 = paint, 0 = erase
+      let lastCellR = -1;
+      let lastCellC = -1;
+
+      // ---- Palette -----------------------------------------------------
+      const COLOR_BG = [11, 11, 16];
+      const COLOR_LIVE = [255, 180, 84];
+      const COLOR_FRESH = [255, 246, 224];
+      const TRAIL_LUT = (() => {
+        const lut = [];
+        for (let i = 0; i <= 32; i++) {
+          const t = i / 32;
+          lut.push([
+            Math.round(COLOR_BG[0] + (COLOR_LIVE[0] - COLOR_BG[0]) * t * 0.55),
+            Math.round(COLOR_BG[1] + (COLOR_LIVE[1] - COLOR_BG[1]) * t * 0.55),
+            Math.round(COLOR_BG[2] + (COLOR_LIVE[2] - COLOR_BG[2]) * t * 0.55)
+          ]);
+        }
+        return lut;
+      })();
+
+      // ---- Icons (inline SVG, no network) ------------------------------
+      const ICON_PLAY = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.6v10.8c0 .6.7 1 1.2.6l8-5.4c.4-.3.4-.9 0-1.2l-8-5.4c-.5-.4-1.2 0-1.2.6z" fill="currentColor"/><\/svg>';
+      const ICON_PAUSE = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2.5" width="3.6" height="11" rx="1.1" fill="currentColor"/><rect x="9.4" y="2.5" width="3.6" height="11" rx="1.1" fill="currentColor"/><\/svg>';
+
+      // ---- Patterns ----------------------------------------------------
+      const PATTERNS = {
+        glider: {
+          name: 'Glider',
+          art: ['.O.', '..O', 'OOO']
+        },
+        lwss: {
+          name: 'Lightweight Spaceship',
+          art: ['.O..O', 'O....', 'O...O', 'OOOO.']
+        },
+        pulsar: {
+          name: 'Pulsar',
+          art: [
+            '..OOO...OOO..',
+            '.............',
+            'O....O.O....O',
+            'O....O.O....O',
+            'O....O.O....O',
+            '..OOO...OOO..',
+            '.............',
+            '..OOO...OOO..',
+            'O....O.O....O',
+            'O....O.O....O',
+            'O....O.O....O',
+            '.............',
+            '..OOO...OOO..'
+          ]
+        },
+        gun: {
+          name: 'Gosper Glider Gun',
+          // 36x9, from the canonical RLE (verified offsets)
+          cells: [
+            [0, 24],
+            [1, 22], [1, 24],
+            [2, 12], [2, 13], [2, 20], [2, 21], [2, 34], [2, 35],
+            [3, 11], [3, 15], [3, 20], [3, 21], [3, 34], [3, 35],
+            [4, 0], [4, 1], [4, 10], [4, 16], [4, 20], [4, 21],
+            [5, 0], [5, 1], [5, 10], [5, 14], [5, 16], [5, 17], [5, 22], [5, 24],
+            [6, 10], [6, 16], [6, 24],
+            [7, 11], [7, 15],
+            [8, 12], [8, 13]
+          ]
+        },
+        block: { name: 'Block', art: ['OO', 'OO'] },
+        blinker: { name: 'Blinker', art: ['OOO'] },
+        beacon: { name: 'Beacon', art: ['OO..', 'OO..', '..OO', '..OO'] },
+        pentadecathlon: { name: 'Pentadecathlon', art: ['..O....O..', 'OO.OOOO.OO', '..O....O..'] }
+      };
+
+      // Convert ASCII-art patterns into [r, c] offsets.
+      Object.keys(PATTERNS).forEach((key) => {
+        const p = PATTERNS[key];
+        if (!p.art) return;
+        const cells = [];
+        p.art.forEach((line, r) => {
+          for (let c = 0; c < line.length; c++) {
+            if (line[c] === 'O') cells.push([r, c]);
+          }
+        });
+        p.cells = cells;
+        delete p.art;
+      });
+
+      // ---- Small helpers ----------------------------------------------
+      function makeGrid(r, c) {
+        return Array.from({ length: r }, () => new Array(c).fill(0));
+      }
+
+      function countPopulation() {
+        let n = 0;
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) n += grid[r][c];
+        }
+        return n;
+      }
+
+      function updateStats() {
+        genEl.textContent = generation;
+        popEl.textContent = population;
+      }
+
+      function liveColor(ageVal) {
+        const t = Math.min(1, ageVal / 6);
+        return [
+          Math.round(COLOR_LIVE[0] + (COLOR_FRESH[0] - COLOR_LIVE[0]) * (1 - t)),
+          Math.round(COLOR_LIVE[1] + (COLOR_FRESH[1] - COLOR_LIVE[1]) * (1 - t)),
+          Math.round(COLOR_LIVE[2] + (COLOR_FRESH[2] - COLOR_LIVE[2]) * (1 - t))
+        ];
+      }
+
+      // ---- Persistence -------------------------------------------------
+      function saveState() {
+        try {
+          localStorage.setItem(STORE_KEY, JSON.stringify({
+            cols, rows, toroidal, speed, generation, grid
+          }));
+        } catch (e) { /* storage unavailable — ignore */ }
+      }
+
+      function loadState() {
+        try {
+          const raw = localStorage.getItem(STORE_KEY);
+          if (!raw) return null;
+          const s = JSON.parse(raw);
+          if (!s || !Array.isArray(s.grid)) return null;
+          if (!GRID_SIZES[s.cols + 'x' + s.rows]) return null;
+          if (s.grid.length !== s.rows) return null;
+          for (let r = 0; r < s.grid.length; r++) {
+            if (!Array.isArray(s.grid[r]) || s.grid[r].length !== s.cols) return null;
+          }
+          return s;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      // ---- Rendering ---------------------------------------------------
+      function fillBg(data, W, H) {
+        const r = COLOR_BG[0];
+        const g = COLOR_BG[1];
+        const b = COLOR_BG[2];
+        for (let y = 0; y < H; y++) {
+          let o = y * W * 4;
+          const end = o + W * 4;
+          for (; o < end; o += 4) {
+            data[o] = r;
+            data[o + 1] = g;
+            data[o + 2] = b;
+            data[o + 3] = 255;
+          }
+        }
+      }
+
+      function fillRect(data, W, x0, y0, w, h, rgb) {
+        const r = rgb[0];
+        const g = rgb[1];
+        const b = rgb[2];
+        for (let y = y0; y < y0 + h; y++) {
+          let o = (y * W + x0) * 4;
+          const end = o + w * 4;
+          for (; o < end; o += 4) {
+            data[o] = r;
+            data[o + 1] = g;
+            data[o + 2] = b;
+            data[o + 3] = 255;
+          }
+        }
+      }
+
+      function drawGridLines(cssCell) {
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const gx = ox / dpr;
+        const gy = oy / dpr;
+        const gw = cols * cssCell;
+        const gh = rows * cssCell;
+        // Board outline
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.22)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(gx - 0.5, gy - 0.5, gw + 1, gh + 1);
+        // Inner grid lines (only when cells are large enough to see)
+        if (cssCell >= 5) {
+          ctx.strokeStyle = 'rgba(148, 163, 184, 0.07)';
+          ctx.beginPath();
+          for (let c = 1; c < cols; c++) {
+            const x = gx + c * cssCell + 0.5;
+            ctx.moveTo(x, gy);
+            ctx.lineTo(x, gy + gh);
+          }
+          for (let r = 1; r < rows; r++) {
+            const y = gy + r * cssCell + 0.5;
+            ctx.moveTo(gx, y);
+            ctx.lineTo(gx + gw, y);
+          }
+          ctx.stroke();
+        }
+      }
+
+      function render() {
+        if (!img) return;
+        const data = img.data;
+        const W = canvas.width;
+        const H = canvas.height;
+        fillBg(data, W, H);
+        for (let r = 0; r < rows; r++) {
+          const y0 = oy + r * cellPx;
+          for (let c = 0; c < cols; c++) {
+            const i = r * cols + c;
+            const x0 = ox + c * cellPx;
+            if (grid[r][c]) {
+              fillRect(data, W, x0, y0, cellPx, cellPx, liveColor(age[i]));
+            } else if (trail[i] > 0.02) {
+              const ti = Math.min(31, (trail[i] * 32) | 0);
+              fillRect(data, W, x0, y0, cellPx, cellPx, TRAIL_LUT[ti]);
+            }
+          }
+        }
+        ctx.putImageData(img, 0, 0);
+        drawGridLines(cellPx / dpr);
+        updateStats();
+      }
+
+      function resize() {
+        const rect = boardWrap.getBoundingClientRect();
+        cssW = Math.max(50, Math.floor(rect.width));
+        cssH = Math.max(50, Math.floor(rect.height));
+        dpr = Math.max(1, window.devicePixelRatio || 1);
+        canvas.width = Math.round(cssW * dpr);
+        canvas.height = Math.round(cssH * dpr);
+        canvas.style.width = cssW + 'px';
+        canvas.style.height = cssH + 'px';
+        cellPx = Math.max(1, Math.floor(Math.min(canvas.width / cols, canvas.height / rows)));
+        ox = Math.floor((canvas.width - cellPx * cols) / 2);
+        oy = Math.floor((canvas.height - cellPx * rows) / 2);
+        img = ctx.createImageData(canvas.width, canvas.height);
+        render();
+      }
+
+      // ---- Simulation --------------------------------------------------
+      function stepOnce() {
+        const next = nextGeneration(grid, toroidal);
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const i = r * cols + c;
+            const was = grid[r][c];
+            const now = next[r][c];
+            if (was && !now) trail[i] = 1;
+            else if (now) trail[i] = 0;
+            age[i] = now ? (was ? Math.min(age[i] + 1, 255) : 0) : 0;
+          }
+        }
+        grid = next;
+        generation++;
+        population = countPopulation();
+        updateStats();
+      }
+
+      function decayTrail(dt) {
+        const factor = Math.pow(0.8, dt / 16.7);
+        for (let i = 0; i < trail.length; i++) {
+          if (trail[i] > 0) trail[i] *= factor;
+        }
+      }
+
+      // ---- Animation loop ---------------------------------------------
+      function startLoop() {
+        if (rafId !== null) return;
+        lastFrame = performance.now();
+        acc = 0;
+        rafId = requestAnimationFrame(frame);
+      }
+
+      function stopLoop() {
+        if (rafId !== null) {
+          cancelAnimationFrame(rafId);
+          rafId = null;
+        }
+      }
+
+      function frame(ts) {
+        let dt = ts - lastFrame;
+        lastFrame = ts;
+        if (dt > 250) dt = 250; // clamp after a hidden tab
+        if (running) {
+          acc += dt;
+          const interval = 1000 / speed;
+          let steps = 0;
+          while (acc >= interval && steps < 8) {
+            stepOnce();
+            acc -= interval;
+            steps++;
+          }
+          if (acc >= interval) acc = 0; // avoid a spiral of death
+          if (ts - lastSave > 2500) {
+            saveState();
+            lastSave = ts;
+          }
+        }
+        decayTrail(dt);
+        render();
+        rafId = requestAnimationFrame(frame);
+      }
+
+      // ---- Board mutations --------------------------------------------
+      function stampPattern(key, topR, topC) {
+        const cells = PATTERNS[key].cells;
+        for (let i = 0; i < cells.length; i++) {
+          const r = topR + cells[i][0];
+          const c = topC + cells[i][1];
+          if (r < 0 || r >= rows || c < 0 || c >= cols) continue;
+          const idx = r * cols + c;
+          grid[r][c] = 1;
+          age[idx] = 0;
+          trail[idx] = 0;
+        }
+      }
+
+      function seedDemo() {
+        stampPattern('gun', 1, 3);
+        stampPattern('pulsar', 14, 42);
+        stampPattern('lwss', 20, 6);
+        stampPattern('glider', 12, 30);
+        stampPattern('glider', 30, 20);
+        stampPattern('pentadecathlon', 30, 44);
+        stampPattern('beacon', 36, 8);
+      }
+
+      function clearBoard() {
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) grid[r][c] = 0;
+        }
+        age.fill(0);
+        trail.fill(0);
+        generation = 0;
+        population = 0;
+        updateStats();
+        saveState();
+        render();
+      }
+
+      function randomize() {
+        const density = 0.28; // ~28% live cells
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            grid[r][c] = Math.random() < density ? 1 : 0;
+          }
+        }
+        age.fill(0);
+        trail.fill(0);
+        generation = 0;
+        population = countPopulation();
+        updateStats();
+        saveState();
+        render();
+      }
+
+      function setGridSize(key) {
+        const size = GRID_SIZES[key];
+        if (!size) return;
+        const nc = size[0];
+        const nr = size[1];
+        if (nc === cols && nr === rows) return;
+        const old = grid;
+        const oldRows = rows;
+        const oldCols = cols;
+        cols = nc;
+        rows = nr;
+        grid = makeGrid(rows, cols);
+        const cr = Math.min(rows, oldRows);
+        const cc = Math.min(cols, oldCols);
+        for (let r = 0; r < cr; r++) {
+          for (let c = 0; c < cc; c++) grid[r][c] = old[r][c];
+        }
+        age = new Uint8Array(rows * cols);
+        trail = new Float32Array(rows * cols);
+        population = countPopulation();
+        resize();
+        saveState();
+      }
+
+      function doStep() {
+        if (running) setRunning(false);
+        stepOnce();
+        render();
+        saveState();
+      }
+
+      function setRunning(v) {
+        running = v;
+        playLabel.textContent = running ? 'Pause' : 'Play';
+        playIcon.innerHTML = running ? ICON_PAUSE : ICON_PLAY;
+        playBtn.classList.toggle('primary', !running);
+        if (running) {
+          startLoop();
+        } else {
+          stopLoop();
+          render();
+        }
+      }
+
+      function setToroidal(v) {
+        toroidal = v;
+        saveState();
+      }
+
+      // ---- Painting (pointer events, touch-friendly) -------------------
+      function cellFromEvent(e) {
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const cssCell = cellPx / dpr;
+        const c = Math.floor((x - ox / dpr) / cssCell);
+        const r = Math.floor((y - oy / dpr) / cssCell);
+        if (r < 0 || r >= rows || c < 0 || c >= cols) return null;
+        return { r, c };
+      }
+
+      function setCell(r, c, val) {
+        if (grid[r][c] === val) return;
+        const i = r * cols + c;
+        grid[r][c] = val;
+        age[i] = 0;
+        trail[i] = 0;
+        population += val ? 1 : -1;
+      }
+
+      canvas.addEventListener('pointerdown', (e) => {
+        if (running) return; // drawing is for the paused state
+        e.preventDefault();
+        const cell = cellFromEvent(e);
+        if (!cell) return;
+        if (brushMode !== 'paint') {
+          stampPattern(brushMode, cell.r, cell.c);
+          population = countPopulation();
+          updateStats();
+          saveState();
+          render();
+          return;
+        }
+        painting = true;
+        paintMode = grid[cell.r][cell.c] ? 0 : 1; // erase if you start on a live cell
+        setCell(cell.r, cell.c, paintMode);
+        lastCellR = cell.r;
+        lastCellC = cell.c;
+        try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+      });
+
+      canvas.addEventListener('pointermove', (e) => {
+        if (!painting || running) return;
+        const cell = cellFromEvent(e);
+        if (!cell) return;
+        const steps = Math.max(Math.abs(cell.r - lastCellR), Math.abs(cell.c - lastCellC));
+        for (let i = 1; i <= steps; i++) {
+          const r = Math.round(lastCellR + (cell.r - lastCellR) * (i / steps));
+          const c = Math.round(lastCellC + (cell.c - lastCellC) * (i / steps));
+          setCell(r, c, paintMode);
+        }
+        lastCellR = cell.r;
+        lastCellC = cell.c;
+        updateStats();
+        render();
+      });
+
+      function endPaint() {
+        if (!painting) return;
+        painting = false;
+        lastCellR = -1;
+        lastCellC = -1;
+        saveState();
+        render();
+      }
+      canvas.addEventListener('pointerup', endPaint);
+      canvas.addEventListener('pointercancel', endPaint);
+
+      // ---- Keyboard shortcuts -----------------------------------------
+      window.addEventListener('keydown', (e) => {
+        const tag = document.activeElement ? document.activeElement.tagName : '';
+        if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+        if (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) {
+          document.activeElement.blur();
+        }
+        switch (e.key) {
+          case ' ':
+            e.preventDefault();
+            setRunning(!running);
+            break;
+          case 'ArrowRight':
+            e.preventDefault();
+            doStep();
+            break;
+          case 'c':
+          case 'C':
+            clearBoard();
+            break;
+          case 'r':
+          case 'R':
+            randomize();
+            break;
+          case 't':
+          case 'T':
+            toroidalChk.checked = !toroidal;
+            setToroidal(toroidalChk.checked);
+            break;
+          case 'Escape':
+            brushMode = 'paint';
+            patternSel.value = 'paint';
+            break;
+        }
+      });
+
+      // ---- Initialise --------------------------------------------------
+      function init() {
+        Object.keys(PATTERNS).forEach((key) => {
+          const opt = document.createElement('option');
+          opt.value = key;
+          opt.textContent = PATTERNS[key].name;
+          patternSel.appendChild(opt);
+        });
+
+        const saved = loadState();
+        if (saved) {
+          cols = saved.cols;
+          rows = saved.rows;
+          grid = saved.grid;
+          toroidal = !!saved.toroidal;
+          speed = Math.min(30, Math.max(1, saved.speed || 10));
+          generation = saved.generation || 0;
+        } else {
+          grid = makeGrid(rows, cols);
+        }
+
+        age = new Uint8Array(rows * cols);
+        trail = new Float32Array(rows * cols);
+
+        if (!saved) {
+          seedDemo();
+        }
+
+        population = countPopulation();
+
+        sizeSel.value = cols + 'x' + rows;
+        toroidalChk.checked = toroidal;
+        speedInput.value = speed;
+        speedLabel.textContent = speed + '/s';
+        updateStats();
+
+        playBtn.addEventListener('click', () => { setRunning(!running); playBtn.blur(); });
+        stepBtn.addEventListener('click', () => { doStep(); stepBtn.blur(); });
+        clearBtn.addEventListener('click', () => { clearBoard(); clearBtn.blur(); });
+        randomBtn.addEventListener('click', () => { randomize(); randomBtn.blur(); });
+        patternSel.addEventListener('change', () => { brushMode = patternSel.value; });
+        sizeSel.addEventListener('change', () => { setGridSize(sizeSel.value); });
+        speedInput.addEventListener('input', () => {
+          speed = parseInt(speedInput.value, 10) || 10;
+          speedLabel.textContent = speed + '/s';
+          saveState();
+        });
+        toroidalChk.addEventListener('change', () => { setToroidal(toroidalChk.checked); });
+        window.addEventListener('resize', resize);
+        window.addEventListener('beforeunload', saveState);
+        document.addEventListener('visibilitychange', () => {
+          if (document.hidden) saveState();
+        });
+
+        resize();
+      }
+
+      init();
+    })();
+  </script>
+</body>
 </html>
