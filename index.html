@@ -1,20 +1,1222 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Game of Life</title>
-  </head>
-  <body>
-    <!--
-      Implement Conway's Game of Life here, following README.md.
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Game of Life — Conway's Cellular Automaton</title>
+  <style>
+    :root {
+      --bg0: #070a10;
+      --bg1: #0a0e15;
+      --panel: #10151f;
+      --panel2: #151c29;
+      --line: #1c2431;
+      --line2: #26324a;
+      --text: #dbe4ee;
+      --muted: #79879c;
+      --faint: #4d5b70;
+      --accent: #2fd4e8;
+      --accent-soft: rgba(47, 212, 232, 0.16);
+      --violet: #8b7cf6;
+      --cell: #31d8f2;
+      --cell-born: #eafdff;
+      --halo: rgba(49, 216, 242, 0.16);
+      --good: #3ddc97;
+      --danger: #ff5d73;
+      color-scheme: dark;
+    }
 
-      Everything (HTML, CSS, JS) must live in this single file:
-        - no external requests, no libraries, no build step
-        - must run from file:// offline
+    * { box-sizing: border-box; }
 
-      Optional: expose `window.gameOfLifeStep(cells)` so glider-test.html
-      can verify your rules automatically (see README.md).
-    -->
-  </body>
+    html, body { height: 100%; }
+
+    body {
+      margin: 0;
+      min-height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background:
+        radial-gradient(1200px 620px at 18% -12%, #101a2e 0%, rgba(16, 26, 46, 0) 58%),
+        radial-gradient(1000px 520px at 110% 8%, rgba(76, 52, 138, 0.22) 0%, rgba(76, 52, 138, 0) 55%),
+        var(--bg0);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.45;
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+      border-radius: 6px;
+    }
+
+    .app {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 16px clamp(12px, 3vw, 32px) 30px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      min-height: 100vh;
+    }
+
+    /* ---------- header ---------- */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    .brand { display: flex; align-items: center; gap: 13px; }
+
+    .logo {
+      width: 18px;
+      height: 18px;
+      flex: none;
+      border-radius: 5px;
+      background: linear-gradient(135deg, var(--cell), var(--violet));
+      box-shadow: 0 0 14px rgba(47, 212, 232, 0.55), 0 0 4px rgba(139, 124, 246, 0.6);
+      animation: logo-pulse 2.6s ease-in-out infinite;
+    }
+
+    @keyframes logo-pulse {
+      0%, 100% { box-shadow: 0 0 12px rgba(47, 212, 232, 0.5), 0 0 4px rgba(139, 124, 246, 0.55); }
+      50% { box-shadow: 0 0 22px rgba(47, 212, 232, 0.9), 0 0 8px rgba(139, 124, 246, 0.8); }
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: 1.16rem;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    .brand p {
+      margin: 0;
+      font-size: 0.72rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .stats { display: flex; gap: 8px; }
+
+    .stat {
+      background: linear-gradient(180deg, var(--panel2), var(--panel));
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 6px 14px;
+      min-width: 92px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+    }
+
+    .stat-label {
+      font-size: 0.62rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .stat strong {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 1.02rem;
+      font-weight: 600;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ---------- toolbar ---------- */
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 16px;
+      align-items: center;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: linear-gradient(180deg, var(--panel2), var(--panel));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    }
+
+    .btn-group { display: flex; gap: 8px; }
+
+    .btn {
+      appearance: none;
+      height: 40px;
+      padding: 0 14px;
+      border-radius: 12px;
+      border: 1px solid var(--line2);
+      background: linear-gradient(180deg, #1a2332, #121826);
+      color: var(--text);
+      font: inherit;
+      font-size: 0.86rem;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease, transform 0.06s ease;
+    }
+
+    .btn:hover {
+      border-color: #3a4a68;
+      background: linear-gradient(180deg, #1e2a3c, #141c2c);
+      box-shadow: 0 0 0 3px rgba(47, 212, 232, 0.07);
+    }
+
+    .btn:active { transform: translateY(1px); }
+
+    .btn svg { flex: none; display: block; }
+
+    .btn.primary {
+      min-width: 108px;
+      justify-content: center;
+      border-color: transparent;
+      color: #03222b;
+      background: linear-gradient(135deg, #43e5f5, #19b8d6);
+      font-weight: 700;
+      box-shadow: 0 6px 20px -8px rgba(47, 212, 232, 0.65);
+    }
+
+    .btn.primary:hover {
+      background: linear-gradient(135deg, #62edfb, #1cc4e2);
+      box-shadow: 0 6px 26px -6px rgba(47, 212, 232, 0.8);
+      border-color: transparent;
+    }
+
+    .btn.primary.playing {
+      background: linear-gradient(135deg, #ffcd4f, #f3a33c);
+      color: #251900;
+    }
+
+    .btn.primary.playing:hover { background: linear-gradient(135deg, #ffe07a, #f5b451); }
+
+    .control {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .control-label { letter-spacing: 0.04em; }
+
+    .control output {
+      min-width: 58px;
+      text-align: right;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      color: var(--text);
+      font-size: 0.78rem;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 150px;
+      height: 6px;
+      border-radius: 99px;
+      background: #1d2638;
+      outline: none;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid #06232b;
+      box-shadow: 0 0 0 3px rgba(47, 212, 232, 0.18);
+      cursor: pointer;
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 13px;
+      height: 13px;
+      border: 0;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 3px rgba(47, 212, 232, 0.18);
+      cursor: pointer;
+    }
+
+    .control.toggle input {
+      position: absolute;
+      opacity: 0;
+      width: 0;
+      height: 0;
+      pointer-events: none;
+    }
+
+    .switch {
+      width: 38px;
+      height: 22px;
+      flex: none;
+      border-radius: 99px;
+      background: #1c2534;
+      border: 1px solid var(--line2);
+      position: relative;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+
+    .switch::after {
+      content: "";
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #8a98ad;
+      transition: left 0.15s ease, background 0.15s ease;
+    }
+
+    .control.toggle input:checked + .switch {
+      background: var(--accent-soft);
+      border-color: rgba(47, 212, 232, 0.55);
+    }
+
+    .control.toggle input:checked + .switch::after {
+      left: 18px;
+      background: var(--accent);
+    }
+
+    select {
+      appearance: none;
+      -webkit-appearance: none;
+      height: 40px;
+      padding: 0 34px 0 12px;
+      border: 1px solid var(--line2);
+      border-radius: 12px;
+      background: var(--panel)
+        url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2379879c' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+        no-repeat right 11px center;
+      color: var(--text);
+      font: inherit;
+      font-size: 0.84rem;
+      cursor: pointer;
+    }
+
+    select:hover { border-color: #3a4a68; }
+
+    /* ---------- stage ---------- */
+    .stage {
+      flex: 1;
+      min-height: 430px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background:
+        radial-gradient(900px 460px at 50% 0%, #101722 0%, var(--bg1) 62%),
+        var(--bg1);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 24px 60px -32px rgba(0, 0, 0, 0.9);
+    }
+
+    #board {
+      border-radius: 6px;
+      background: var(--bg1);
+      box-shadow: 0 18px 44px -20px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.045);
+      touch-action: none;
+      cursor: crosshair;
+      user-select: none;
+      -webkit-user-select: none;
+      display: block;
+    }
+
+    /* ---------- footer ---------- */
+    .hint {
+      margin: 0;
+      font-size: 0.76rem;
+      color: var(--muted);
+      min-height: 2.2em;
+      display: flex;
+      align-items: center;
+    }
+
+    .hint p { margin: 0; }
+
+    .hint .dot {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      margin: 0 8px 1px 2px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 8px rgba(47, 212, 232, 0.8);
+    }
+
+    #hintStamp { color: var(--accent); }
+
+    .hint em { color: var(--text); font-style: normal; }
+
+    kbd {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.68rem;
+      padding: 1px 6px;
+      border: 1px solid var(--line2);
+      border-radius: 6px;
+      background: var(--panel2);
+      color: var(--text);
+    }
+
+    @media (max-width: 700px) {
+      .app { padding-top: 12px; }
+      .stage { min-height: 340px; padding: 10px; }
+      .btn { padding: 0 11px; }
+      .btn.primary { min-width: 96px; }
+      input[type="range"] { width: 112px; }
+      .stat { min-width: 78px; padding: 5px 10px; }
+      .hint { font-size: 0.7rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo" aria-hidden="true"></span>
+        <div class="brand-text">
+          <h1>Game of Life</h1>
+          <p>Conway's cellular automaton</p>
+        </div>
+      </div>
+      <div class="stats" aria-label="Statistics">
+        <div class="stat"><span class="stat-label">Generation</span><strong id="statGen">0</strong></div>
+        <div class="stat"><span class="stat-label">Population</span><strong id="statPop">0</strong></div>
+      </div>
+    </header>
+
+    <nav class="toolbar" aria-label="Controls">
+      <div class="btn-group">
+        <button id="btnPlay" class="btn primary" aria-pressed="false" title="Play / Pause (Space)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg><span class="label">Play</span>
+        </button>
+        <button id="btnStep" class="btn" title="Step one generation (→)" aria-label="Step one generation">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5l8 7-8 7zM16 5h2v14h-2z"/></svg>
+        </button>
+        <button id="btnClear" class="btn" title="Clear board (C)" aria-label="Clear board">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+        <button id="btnRand" class="btn" title="Randomize board (R)" aria-label="Randomize board">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+        </button>
+      </div>
+
+      <label class="control speed">
+        <span class="control-label">Speed</span>
+        <input type="range" id="speed" min="1" max="100" step="1" value="85" aria-label="Simulation speed" />
+        <output id="speedVal" for="speed">6.3 gen/s</output>
+      </label>
+
+      <label class="control toggle">
+        <span class="control-label">Wrap</span>
+        <input type="checkbox" id="wrap" aria-label="Toroidal wrap edges" />
+        <span class="switch" aria-hidden="true"></span>
+      </label>
+
+      <label class="control">
+        <span class="control-label">Grid</span>
+        <select id="gridSize" aria-label="Grid size">
+          <option value="60x40" selected>60 × 40</option>
+          <option value="100x70">100 × 70</option>
+          <option value="200x120">200 × 120</option>
+        </select>
+      </label>
+
+      <label class="control">
+        <span class="control-label">Pattern</span>
+        <select id="pattern" aria-label="Stamp a pattern"></select>
+      </label>
+    </nav>
+
+    <main class="stage" id="stage">
+      <canvas id="board" width="900" height="600" aria-label="Game of Life board"></canvas>
+    </main>
+
+    <footer class="hint">
+      <p id="hintMain">
+        <span class="dot" aria-hidden="true"></span>
+        Click &amp; drag to paint, drag from a live cell to erase ·
+        <kbd>Space</kbd> play/pause ·
+        <kbd>→</kbd> step ·
+        <kbd>C</kbd> clear ·
+        <kbd>R</kbd> randomize ·
+        <kbd>W</kbd> wrap ·
+        edges are hard walls — turn on <em>Wrap</em> for toroidal
+      </p>
+      <p id="hintStamp" hidden>
+        Stamp mode — click the board to place <strong id="stampName"></strong>.
+        <kbd>Esc</kbd> or pick “Stamp a pattern…” to exit.
+      </p>
+    </footer>
+  </div>
+
+  <script>
+    'use strict';
+
+    /* ==================================================================
+     *  Pure simulation core (B3/S23, Moore neighbourhood)
+     *  ================================================================ */
+
+    var DEFAULT_ROWS = 40;
+    var DEFAULT_COLS = 60;
+    var LS_KEY = 'game-of-life.v1';
+    var BG_COLOR = '#0a0e15';
+    var TRAIL_COLOR = 'rgba(10, 14, 21, 0.34)';
+    var CELL_COLOR = '#31d8f2';
+    var BORN_COLOR = '#eafdff';
+    var HALO_COLOR = 'rgba(49, 216, 242, 0.16)';
+    var GRID_SIZES = [[60, 40], [100, 70], [200, 120]];
+    var RANDOM_DENSITY = 0.30;
+
+    var state = {
+      rows: DEFAULT_ROWS,
+      cols: DEFAULT_COLS,
+      wrap: false,
+      speed: 85,
+      gen: 0,
+      playing: true,
+      grid: null,
+      birthGrid: null
+    };
+
+    var stampId = null;
+    var painting = false;
+    var paintValue = 1;
+    var lastCellKey = null;
+    var hoverCell = null;
+    var cellPx = 14;
+    var dpr = 1;
+    var canvas = null;
+    var ctx = null;
+    var stage = null;
+    var rafId = null;
+    var lastTs = 0;
+    var accTs = 0;
+    var persistTimer = null;
+
+    function emptyGrid(rows, cols) {
+      var g = new Array(rows);
+      for (var r = 0; r < rows; r++) g[r] = new Array(cols).fill(0);
+      return g;
+    }
+
+    function copyGrid(grid) {
+      return grid.map(function (row) { return row.slice(); });
+    }
+
+    /**
+     * Advance one generation. Pure: never mutates `cells`.
+     * `wrap` true = toroidal edges, false = hard walls.
+     */
+    function step(cells, wrap) {
+      var rows = cells.length;
+      var cols = rows ? cells[0].length : 0;
+      var next = emptyGrid(rows, cols);
+      for (var r = 0; r < rows; r++) {
+        for (var c = 0; c < cols; c++) {
+          var live = 0;
+          for (var dr = -1; dr <= 1; dr++) {
+            for (var dc = -1; dc <= 1; dc++) {
+              if (dr === 0 && dc === 0) continue;
+              var rr = r + dr;
+              var cc = c + dc;
+              if (wrap) {
+                rr = (rr + rows) % rows;
+                cc = (cc + cols) % cols;
+              } else if (rr < 0 || rr >= rows || cc < 0 || cc >= cols) {
+                continue;
+              }
+              if (cells[rr][cc]) live++;
+            }
+          }
+          next[r][c] = cells[r][c] ? (live === 2 || live === 3 ? 1 : 0) : (live === 3 ? 1 : 0);
+        }
+      }
+      return next;
+    }
+
+    function countLive(grid) {
+      var n = 0;
+      for (var r = 0; r < grid.length; r++) {
+        var row = grid[r];
+        for (var c = 0; c < row.length; c++) n += row[c];
+      }
+      return n;
+    }
+
+    /**
+     * Optional grading hook: pure, non-mutating next-generation function.
+     * Uses the app's current wrap setting by default; an explicit second
+     * argument overrides it.
+     */
+    window.gameOfLifeStep = function (cells, wrap) {
+      return step(cells, wrap === undefined ? state.wrap : !!wrap);
+    };
+
+    /* ==================================================================
+     *  Pattern library
+     *  ================================================================ */
+
+    var PATTERNS = {
+      glider: { name: 'Glider', rows: ['.X.', '..X', 'XXX'] },
+      blinker: { name: 'Blinker', rows: ['XXX'] },
+      toad: { name: 'Toad', rows: ['.XXX', 'XXX.'] },
+      lwss: { name: 'Lightweight Spaceship', rows: ['.X..X', 'X....', 'X...X', 'XXXX.'] },
+      pulsar: {
+        name: 'Pulsar',
+        rows: [
+          '..XXX...XXX..',
+          '.............',
+          'X....X.X....X',
+          'X....X.X....X',
+          'X....X.X....X',
+          '..XXX...XXX..',
+          '.............',
+          '..XXX...XXX..',
+          'X....X.X....X',
+          'X....X.X....X',
+          'X....X.X....X',
+          '.............',
+          '..XXX...XXX..'
+        ]
+      },
+      gun: {
+        name: 'Gosper Glider Gun',
+        rows: [
+          '........................X...........',
+          '......................X.X...........',
+          '............XX......XX............XX',
+          '...........X...X....XX............XX',
+          'XX........X.....X...XX..............',
+          'XX........X...X.XX....X.X...........',
+          '..........X.....X.......X...........',
+          '...........X...X....................',
+          '............XX........................'
+        ]
+      },
+      rpent: { name: 'R-pentomino', rows: ['.XX', 'XX.', '.X.'] }
+    };
+
+    var PATTERN_CELLS = {};
+    (function buildPatternCells() {
+      for (var id in PATTERNS) {
+        if (!Object.prototype.hasOwnProperty.call(PATTERNS, id)) continue;
+        var cells = [];
+        var rows = PATTERNS[id].rows;
+        for (var r = 0; r < rows.length; r++) {
+          var row = rows[r];
+          for (var c = 0; c < row.length; c++) {
+            if (row.charAt(c) === 'X') cells.push([r, c]);
+          }
+        }
+        PATTERN_CELLS[id] = cells;
+      }
+    })();
+
+    function placePattern(grid, cells, startR, startC) {
+      var rows = grid.length;
+      var cols = grid[0].length;
+      for (var i = 0; i < cells.length; i++) {
+        var r = startR + cells[i][0];
+        var c = startC + cells[i][1];
+        if (r >= 0 && r < rows && c >= 0 && c < cols) grid[r][c] = 1;
+      }
+    }
+
+    function buildDefaultBoard(rows, cols) {
+      var g = emptyGrid(rows, cols);
+      placePattern(g, PATTERN_CELLS.gun, 2, 2);
+      if (rows >= 18 && cols >= 14) {
+        placePattern(g, PATTERN_CELLS.pulsar, Math.min(rows - 14, 18), Math.min(cols - 14, Math.floor(cols * 0.62)));
+      }
+      if (rows >= 36 && cols >= 12) {
+        placePattern(g, PATTERN_CELLS.lwss, Math.min(rows - 5, 31), Math.min(cols - 6, 9));
+      }
+      if (rows >= 5 && cols >= 8) {
+        placePattern(g, PATTERN_CELLS.glider, Math.min(rows - 4, 8), Math.min(cols - 8, cols - 22));
+      }
+      return g;
+    }
+
+    /* ==================================================================
+     *  Persistence (URL hash for sharing + localStorage for restore)
+     *  ================================================================ */
+
+    function boardToB64(grid) {
+      var rows = grid.length;
+      var cols = grid[0].length;
+      var bits = rows * cols;
+      var bytes = new Uint8Array(Math.ceil(bits / 8));
+      var idx = 0;
+      for (var r = 0; r < rows; r++) {
+        for (var c = 0; c < cols; c++) {
+          if (grid[r][c]) bytes[idx >> 3] |= 1 << (7 - (idx & 7));
+          idx++;
+        }
+      }
+      var bin = '';
+      for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      return btoa(bin);
+    }
+
+    function b64ToBoard(str, rows, cols) {
+      var bin = atob(str);
+      var grid = emptyGrid(rows, cols);
+      var idx = 0;
+      for (var r = 0; r < rows; r++) {
+        for (var c = 0; c < cols; c++) {
+          var byte = bin.charCodeAt(idx >> 3);
+          if (byte & (1 << (7 - (idx & 7)))) grid[r][c] = 1;
+          idx++;
+        }
+      }
+      return grid;
+    }
+
+    function validDims(r, c) {
+      return Number.isInteger(r) && Number.isInteger(c) && r >= 10 && r <= 400 && c >= 10 && c <= 400;
+    }
+
+    function clampSpeed(v) {
+      v = Number(v);
+      if (!isFinite(v)) return 85;
+      return Math.max(1, Math.min(100, Math.round(v)));
+    }
+
+    function serializeState() {
+      return {
+        v: 1,
+        rows: state.rows,
+        cols: state.cols,
+        wrap: state.wrap,
+        speed: state.speed,
+        gen: state.gen,
+        playing: state.playing,
+        board: boardToB64(state.grid)
+      };
+    }
+
+    function writeState() {
+      try {
+        var data = serializeState();
+        localStorage.setItem(LS_KEY, JSON.stringify(data));
+        history.replaceState(null, '', '#g=' + state.rows + 'x' + state.cols + '~' + boardToB64(state.grid));
+      } catch (e) {
+        /* storage / history unavailable (some file:// contexts) — app still works */
+      }
+    }
+
+    function persist() {
+      clearTimeout(persistTimer);
+      persistTimer = setTimeout(writeState, 200);
+    }
+
+    function parseHash() {
+      var m = (location.hash || '').match(/^#g=(\d+)x(\d+)~([A-Za-z0-9+/]+={0,2})$/);
+      if (!m) return null;
+      var rows = Number(m[1]);
+      var cols = Number(m[2]);
+      if (!validDims(rows, cols)) return null;
+      try {
+        return { rows: rows, cols: cols, board: b64ToBoard(m[3], rows, cols) };
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function loadState() {
+      var fromHash = parseHash();
+      var data = null;
+      if (fromHash) {
+        data = {
+          v: 1,
+          rows: fromHash.rows,
+          cols: fromHash.cols,
+          wrap: false,
+          speed: 85,
+          gen: 0,
+          playing: true,
+          board: fromHash.board
+        };
+      } else {
+        try {
+          var raw = localStorage.getItem(LS_KEY);
+          if (raw) data = JSON.parse(raw);
+        } catch (e) {
+          data = null;
+        }
+        if (!data || data.v !== 1) return null;
+        data.board = (function () {
+          try { return b64ToBoard(data.board, data.rows, data.cols); } catch (e2) { return null; }
+        })();
+        if (!data.board) return null;
+      }
+      if (!validDims(data.rows, data.cols)) return null;
+      return {
+        rows: data.rows,
+        cols: data.cols,
+        wrap: !!data.wrap,
+        speed: clampSpeed(data.speed),
+        gen: isFinite(Number(data.gen)) ? Math.max(0, Number(data.gen) | 0) : 0,
+        playing: fromHash ? true : data.playing !== false,
+        grid: data.board
+      };
+    }
+
+    /* ==================================================================
+     *  Rendering
+     *  ================================================================ */
+
+    function drawGrid(W, H) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (var c = 0; c <= state.cols; c++) {
+        var x = c * cellPx + 0.5;
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, H);
+      }
+      for (var r = 0; r <= state.rows; r++) {
+        var y = r * cellPx + 0.5;
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y);
+      }
+      ctx.stroke();
+    }
+
+    function drawCells() {
+      var rows = state.rows;
+      var cols = state.cols;
+      var grid = state.grid;
+      var birth = state.birthGrid;
+      var cell = cellPx;
+      var gap = Math.max(0, Math.floor(cell * 0.12));
+      var core = cell - 2 * gap;
+      var hasHalo = cell >= 7;
+
+      if (hasHalo) {
+        ctx.fillStyle = HALO_COLOR;
+        for (var r = 0; r < rows; r++) {
+          var row = grid[r];
+          for (var c = 0; c < cols; c++) {
+            if (row[c]) ctx.fillRect(c * cell - 1, r * cell - 1, cell + 2, cell + 2);
+          }
+        }
+      }
+
+      for (var r2 = 0; r2 < rows; r2++) {
+        var row2 = grid[r2];
+        var brow = birth ? birth[r2] : null;
+        for (var c2 = 0; c2 < cols; c2++) {
+          if (!row2[c2]) continue;
+          ctx.fillStyle = (brow && !brow[c2]) ? BORN_COLOR : CELL_COLOR;
+          ctx.fillRect(c2 * cell + gap, r2 * cell + gap, core, core);
+        }
+      }
+    }
+
+    function drawStampGhost() {
+      if (!stampId || !hoverCell) return;
+      var cells = PATTERN_CELLS[stampId];
+      if (!cells) return;
+      var cell = cellPx;
+      var gap = Math.max(0, Math.floor(cell * 0.12));
+      ctx.fillStyle = 'rgba(116, 235, 255, 0.4)';
+      for (var i = 0; i < cells.length; i++) {
+        var rr = hoverCell.r + cells[i][0];
+        var cc = hoverCell.c + cells[i][1];
+        if (rr >= 0 && rr < state.rows && cc >= 0 && cc < state.cols) {
+          ctx.fillRect(cc * cell + gap, rr * cell + gap, cell - 2 * gap, cell - 2 * gap);
+        }
+      }
+    }
+
+    function draw() {
+      if (!ctx || !state.grid) return;
+      var W = canvas.width / dpr;
+      var H = canvas.height / dpr;
+      if (state.playing) {
+        ctx.fillStyle = TRAIL_COLOR;
+        ctx.fillRect(0, 0, W, H);
+      } else {
+        ctx.fillStyle = BG_COLOR;
+        ctx.fillRect(0, 0, W, H);
+      }
+      if (cellPx >= 7) drawGrid(W, H);
+      drawCells();
+      drawStampGhost();
+    }
+
+    function resize() {
+      dpr = window.devicePixelRatio || 1;
+      var rect = stage.getBoundingClientRect();
+      var availW = Math.max(120, rect.width - 24);
+      var availH = Math.max(120, rect.height - 24);
+      cellPx = Math.max(4, Math.floor(Math.min(availW / state.cols, availH / state.rows, 22)));
+      var w = cellPx * state.cols;
+      var h = cellPx * state.rows;
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      draw();
+    }
+
+    /* ==================================================================
+     *  Simulation loop & controls
+     *  ================================================================ */
+
+    function speedMs() {
+      return Math.max(12, Math.round(1010 - state.speed * 10));
+    }
+
+    function updateSpeedLabel() {
+      var ms = speedMs();
+      $('#speedVal').textContent = Math.round((1000 / ms) * 10) / 10 + ' gen/s';
+    }
+
+    function updateStats() {
+      $('#statGen').textContent = state.gen;
+      $('#statPop').textContent = countLive(state.grid);
+    }
+
+    function doStep(persistAfter) {
+      var next = step(state.grid, state.wrap);
+      state.birthGrid = state.grid;
+      state.grid = next;
+      state.gen++;
+      updateStats();
+      if (persistAfter) persist();
+    }
+
+    function manualStep() {
+      if (state.playing) {
+        state.playing = false;
+        syncPlayBtn();
+      }
+      doStep(true);
+      draw();
+    }
+
+    function togglePlay() {
+      state.playing = !state.playing;
+      lastTs = 0;
+      accTs = 0;
+      syncPlayBtn();
+      draw();
+      persist();
+    }
+
+    function setWrap(v) {
+      state.wrap = !!v;
+      $('#wrap').checked = state.wrap;
+      persist();
+      draw();
+    }
+
+    function clearBoard() {
+      state.grid = emptyGrid(state.rows, state.cols);
+      state.gen = 0;
+      state.birthGrid = null;
+      updateStats();
+      draw();
+      persist();
+    }
+
+    function randomize() {
+      var g = emptyGrid(state.rows, state.cols);
+      for (var r = 0; r < state.rows; r++) {
+        for (var c = 0; c < state.cols; c++) {
+          if (Math.random() < RANDOM_DENSITY) g[r][c] = 1;
+        }
+      }
+      state.grid = g;
+      state.gen = 0;
+      state.birthGrid = null;
+      updateStats();
+      draw();
+      persist();
+    }
+
+    function changeGridSize() {
+      var v = $('#gridSize').value;
+      var idx = -1;
+      for (var i = 0; i < GRID_SIZES.length; i++) {
+        if (GRID_SIZES[i][0] + 'x' + GRID_SIZES[i][1] === v) { idx = i; break; }
+      }
+      if (idx < 0) return;
+      var cols = GRID_SIZES[idx][0];
+      var rows = GRID_SIZES[idx][1];
+      if (rows === state.rows && cols === state.cols) return;
+      state.cols = cols;
+      state.rows = rows;
+      state.grid = emptyGrid(rows, cols);
+      state.gen = 0;
+      state.birthGrid = null;
+      updateStats();
+      resize();
+      persist();
+    }
+
+    function syncGridSelect() {
+      var v = state.cols + 'x' + state.rows;
+      var sel = $('#gridSize');
+      if (sel.options && sel.options.length) {
+        for (var i = 0; i < sel.options.length; i++) {
+          if (sel.options[i].value === v) { sel.value = v; return; }
+        }
+        var opt = document.createElement('option');
+        opt.value = v;
+        opt.textContent = state.cols + ' × ' + state.rows;
+        opt.disabled = true;
+        sel.appendChild(opt);
+        sel.value = v;
+      }
+    }
+
+    function onPatternChange() {
+      var v = $('#pattern').value;
+      stampId = v || null;
+      $('#stampName').textContent = v ? PATTERNS[v].name : '';
+      $('#hintMain').hidden = !!stampId;
+      $('#hintStamp').hidden = !stampId;
+      draw();
+    }
+
+    function cancelStamp() {
+      stampId = null;
+      $('#pattern').value = '';
+      $('#hintMain').hidden = false;
+      $('#hintStamp').hidden = true;
+      draw();
+    }
+
+    /* ---------- painting ---------- */
+
+    function cellFromEvent(e) {
+      var rect = canvas.getBoundingClientRect();
+      var c = Math.floor((e.clientX - rect.left) / cellPx);
+      var r = Math.floor((e.clientY - rect.top) / cellPx);
+      if (r < 0 || c < 0 || r >= state.rows || c >= state.cols) return null;
+      return { r: r, c: c };
+    }
+
+    function applyPaint(r, c) {
+      state.grid[r][c] = paintValue;
+      state.birthGrid = null;
+      updateStats();
+      persist();
+    }
+
+    function onPointerDown(e) {
+      e.preventDefault();
+      var cell = cellFromEvent(e);
+      if (!cell) return;
+      if (stampId) {
+        placePattern(state.grid, PATTERN_CELLS[stampId], cell.r, cell.c);
+        state.birthGrid = null;
+        updateStats();
+        draw();
+        persist();
+        return;
+      }
+      painting = true;
+      paintValue = state.grid[cell.r][cell.c] ? 0 : 1;
+      applyPaint(cell.r, cell.c);
+      lastCellKey = cell.r + ':' + cell.c;
+      if (canvas.setPointerCapture) canvas.setPointerCapture(e.pointerId);
+    }
+
+    function onPointerMove(e) {
+      var cell = cellFromEvent(e);
+      hoverCell = cell;
+      if (painting && cell) {
+        var key = cell.r + ':' + cell.c;
+        if (key !== lastCellKey) {
+          applyPaint(cell.r, cell.c);
+          lastCellKey = key;
+        }
+      }
+      draw();
+    }
+
+    function onPointerUp() {
+      painting = false;
+      lastCellKey = null;
+      draw();
+    }
+
+    function onPointerLeave() {
+      hoverCell = null;
+      if (!painting) draw();
+    }
+
+    /* ---------- keyboard ---------- */
+
+    function onKeyDown(e) {
+      var tag = e.target && e.target.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
+      switch (e.code) {
+        case 'Space':
+          e.preventDefault();
+          togglePlay();
+          break;
+        case 'ArrowRight':
+        case 'Period':
+          e.preventDefault();
+          manualStep();
+          break;
+        case 'KeyC':
+          clearBoard();
+          break;
+        case 'KeyR':
+          randomize();
+          break;
+        case 'KeyW':
+          setWrap(!state.wrap);
+          break;
+        case 'Escape':
+          cancelStamp();
+          break;
+      }
+    }
+
+    /* ---------- play button ---------- */
+
+    var ICON_PLAY = '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
+    var ICON_PAUSE = '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>';
+
+    function syncPlayBtn() {
+      var btn = $('#btnPlay');
+      btn.classList.toggle('playing', !!state.playing);
+      btn.setAttribute('aria-pressed', state.playing ? 'true' : 'false');
+      btn.innerHTML = (state.playing ? ICON_PAUSE : ICON_PLAY) + '<span class="label">' + (state.playing ? 'Pause' : 'Play') + '</span>';
+    }
+
+    /* ---------- bootstrap ---------- */
+
+    function $(id) { return document.getElementById(id); }
+
+    function debounce(fn, ms) {
+      var t = null;
+      return function () {
+        clearTimeout(t);
+        t = setTimeout(function () { fn(); }, ms);
+      };
+    }
+
+    function buildPatternOptions() {
+      var sel = $('#pattern');
+      var first = document.createElement('option');
+      first.value = '';
+      first.textContent = 'Stamp a pattern…';
+      sel.appendChild(first);
+      for (var id in PATTERNS) {
+        if (!Object.prototype.hasOwnProperty.call(PATTERNS, id)) continue;
+        var opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = PATTERNS[id].name;
+        sel.appendChild(opt);
+      }
+    }
+
+    function bindEvents() {
+      $('#btnPlay').addEventListener('click', togglePlay);
+      $('#btnStep').addEventListener('click', manualStep);
+      $('#btnClear').addEventListener('click', clearBoard);
+      $('#btnRand').addEventListener('click', randomize);
+      $('#wrap').addEventListener('change', function () { setWrap($('#wrap').checked); });
+      $('#speed').addEventListener('input', function () {
+        state.speed = Number($('#speed').value);
+        updateSpeedLabel();
+        persist();
+      });
+      $('#gridSize').addEventListener('change', changeGridSize);
+      $('#pattern').addEventListener('change', onPatternChange);
+      canvas.addEventListener('pointerdown', onPointerDown);
+      canvas.addEventListener('pointermove', onPointerMove);
+      canvas.addEventListener('pointerup', onPointerUp);
+      canvas.addEventListener('pointercancel', onPointerUp);
+      canvas.addEventListener('pointerleave', onPointerLeave);
+      window.addEventListener('resize', debounce(resize, 150));
+      window.addEventListener('keydown', onKeyDown);
+      window.addEventListener('beforeunload', function () {
+        try { localStorage.setItem(LS_KEY, JSON.stringify(serializeState())); } catch (e) { /* ignore */ }
+      });
+    }
+
+    function frame(ts) {
+      rafId = requestAnimationFrame(frame);
+      if (!state.playing) {
+        lastTs = 0;
+        accTs = 0;
+        return;
+      }
+      if (!lastTs) lastTs = ts;
+      accTs += ts - lastTs;
+      lastTs = ts;
+      var interval = speedMs();
+      var guard = 0;
+      while (accTs >= interval && guard < 4) {
+        accTs -= interval;
+        doStep(false);
+        guard++;
+      }
+      draw();
+    }
+
+    function init() {
+      canvas = $('#board');
+      stage = $('#stage');
+      ctx = canvas.getContext('2d');
+      buildPatternOptions();
+
+      var saved = loadState();
+      if (saved) {
+        state.rows = saved.rows;
+        state.cols = saved.cols;
+        state.wrap = saved.wrap;
+        state.speed = saved.speed;
+        state.gen = saved.gen;
+        state.playing = saved.playing;
+        state.grid = saved.grid;
+        state.birthGrid = null;
+      } else {
+        state.rows = DEFAULT_ROWS;
+        state.cols = DEFAULT_COLS;
+        state.wrap = false;
+        state.speed = 85;
+        state.gen = 0;
+        state.playing = true;
+        state.grid = buildDefaultBoard(state.rows, state.cols);
+        state.birthGrid = null;
+      }
+
+      $('#wrap').checked = state.wrap;
+      $('#speed').value = state.speed;
+      updateSpeedLabel();
+      syncGridSelect();
+      syncPlayBtn();
+      resize();
+      updateStats();
+      bindEvents();
+      rafId = requestAnimationFrame(frame);
+      if (document.readyState === 'complete') writeState(); else persist();
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
 </html>

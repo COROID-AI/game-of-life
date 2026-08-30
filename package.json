@@ -1,0 +1,9 @@
+{
+  "name": "game-of-life",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Conway's Game of Life — single-file browser app",
+  "scripts": {
+    "security": "node scripts/security-scan.js"
+  }
+}
