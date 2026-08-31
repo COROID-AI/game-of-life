@@ -3,18 +3,1023 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Game of Life</title>
+    <title>Game of Life — Conway's Cellular Automaton</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0e14;
+        --panel: rgba(15, 20, 30, 0.72);
+        --line: #1e2634;
+        --line-strong: #2a3448;
+        --text: #e7edf5;
+        --muted: #8b96a8;
+        --accent: #3fd89c;
+        --accent-strong: #8df5cd;
+        --accent-dim: rgba(63, 216, 156, 0.14);
+        --accent-text: #052017;
+        --radius: 14px;
+        --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body { height: 100%; }
+
+      body {
+        margin: 0;
+        font-family: var(--font);
+        background:
+          radial-gradient(1100px 520px at 12% -10%, rgba(38, 114, 122, 0.28), transparent 60%),
+          radial-gradient(900px 500px at 92% 0%, rgba(63, 216, 156, 0.14), transparent 55%),
+          radial-gradient(1000px 700px at 50% 115%, rgba(24, 44, 66, 0.5), transparent 60%),
+          var(--bg);
+        background-attachment: fixed;
+        color: var(--text);
+        line-height: 1.45;
+      }
+
+      .app {
+        max-width: 1240px;
+        margin: 0 auto;
+        padding: clamp(14px, 3vw, 34px);
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        min-height: 100vh;
+      }
+
+      /* ---------- Header ---------- */
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 14px;
+        padding: 14px 18px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+      }
+
+      .brand { display: flex; align-items: center; gap: 14px; }
+
+      .logo {
+        width: 42px;
+        height: 42px;
+        flex: none;
+        color: var(--accent);
+      }
+
+      .titles h1 {
+        margin: 0;
+        font-size: 1.18rem;
+        letter-spacing: 0.01em;
+      }
+
+      .titles p {
+        margin: 2px 0 0;
+        font-size: 0.78rem;
+        color: var(--muted);
+      }
+
+      .stats { display: flex; gap: 8px; flex-wrap: wrap; }
+
+      .chip {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 1px;
+        padding: 6px 12px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+      }
+
+      .chip i {
+        font-style: normal;
+        font-size: 0.62rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--muted);
+      }
+
+      .chip b {
+        font-family: var(--mono);
+        font-size: 0.95rem;
+        color: var(--accent-strong);
+      }
+
+      /* ---------- Toolbar ---------- */
+      .toolbar {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px;
+        padding: 12px 14px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+      }
+
+      .btn {
+        font: inherit;
+        font-size: 0.86rem;
+        font-weight: 600;
+        color: var(--text);
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--line-strong);
+        border-radius: 10px;
+        padding: 8px 14px;
+        cursor: pointer;
+        transition: background 0.15s ease, border-color 0.15s ease, transform 0.05s ease;
+        white-space: nowrap;
+      }
+
+      .btn:hover { background: rgba(255, 255, 255, 0.1); border-color: #3b4咽660; }
+      .btn:active { transform: translateY(1px); }
+
+      .btn-primary {
+        background: linear-gradient(180deg, var(--accent-strong), var(--accent));
+        color: var(--accent-text);
+        border-color: transparent;
+        min-width: 108px;
+      }
+
+      .btn-primary:hover { filter: brightness(1.06); }
+      .btn-primary.playing { background: linear-gradient(180deg, #ffd28a, #f0a748); color: #241303; }
+
+      select.sel {
+        font: inherit;
+        font-size: 0.84rem;
+        color: var(--text);
+        background-color: #111826;
+        border: 1px solid var(--line-strong);
+        border-radius: 10px;
+        padding: 8px 30px 8px 12px;
+        cursor: pointer;
+        appearance: none;
+        -webkit-appearance: none;
+        background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6"><path d="M0 0l5 6 5-6z" fill="%238b96a8"/></svg>');
+        background-repeat: no-repeat;
+        background-position: right 12px center;
+      }
+
+      select.sel:focus { outline: 1px solid var(--accent); outline-offset: 1px; }
+
+      .field {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.82rem;
+        color: var(--muted);
+        cursor: pointer;
+      }
+
+      .field input[type="range"] {
+        width: 96px;
+        accent-color: var(--accent);
+        cursor: pointer;
+      }
+
+      .field b { color: var(--text); font-family: var(--mono); font-weight: 600; min-width: 38px; }
+
+      .switch {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.82rem;
+        color: var(--muted);
+        cursor: pointer;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+
+      .switch input {
+        position: absolute;
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+
+      .track {
+        width: 36px;
+        height: 20px;
+        border-radius: 999px;
+        background: #26303f;
+        border: 1px solid var(--line-strong);
+        position: relative;
+        transition: background 0.15s ease;
+        flex: none;
+      }
+
+      .track .thumb {
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #8b96a8;
+        transition: transform 0.15s ease, background 0.15s ease;
+      }
+
+      .switch input:checked + .track { background: var(--accent-dim); border-color: var(--accent); }
+      .switch input:checked + .track .thumb { transform: translateX(16px); background: var(--accent); }
+
+      /* ---------- Stage ---------- */
+      .stage {
+        flex: 1 1 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 280px;
+        padding: 14px;
+        background: rgba(6, 9, 14, 0.55);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        box-shadow: inset 0 1px 24px rgba(0, 0, 0, 0.35);
+      }
+
+      #board {
+        display: block;
+        border-radius: 8px;
+        box-shadow: 0 8px 34px rgba(0, 0, 0, 0.45);
+        touch-action: none;
+        cursor: crosshair;
+        background: #0a0d13;
+      }
+
+      .hint {
+        margin: 0;
+        text-align: center;
+        font-size: 0.8rem;
+        color: var(--muted);
+      }
+
+      .hint .dot { color: var(--accent); padding: 0 2px; }
+
+      @media (max-width: 720px) {
+        .titles p { display: none; }
+        .stats { order: 3; width: 100%; justify-content: flex-end; }
+        .toolbar { gap: 8px; }
+        .btn { padding: 8px 11px; }
+        .field input[type="range"] { width: 72px; }
+      }
+    </style>
   </head>
   <body>
-    <!--
-      Implement Conway's Game of Life here, following README.md.
+    <div class="app">
+      <header>
+        <div class="brand">
+          <svg class="logo" viewBox="0 0 24 24" role="img" aria-label="Game of Life">
+            <rect x="3" y="3" width="7" height="7" rx="1.4" fill="none" stroke="currentColor" opacity="0.35" stroke-width="1.5" />
+            <rect x="14" y="3" width="7" height="7" rx="1.4" fill="#3fd89c" opacity="0.55" />
+            <rect x="3" y="14" width="7" height="7" rx="1.4" fill="none" stroke="currentColor" opacity="0.25" stroke-width="1.5" />
+            <rect x="14" y="14" width="7" height="7" rx="1.4" fill="#3fd89c" />
+          </svg>
+          <div class="titles">
+            <h1>Game of Life</h1>
+            <p>Conway's cellular automaton · B3/S23</p>
+          </div>
+        </div>
+        <div class="stats">
+          <span class="chip"><i>Generation</i><b id="genVal">0</b></span>
+          <span class="chip"><i>Live</i><b id="popVal">0</b></span>
+          <span class="chip"><i>Grid</i><b id="dimsVal">60×40</b></span>
+        </div>
+      </header>
 
-      Everything (HTML, CSS, JS) must live in this single file:
-        - no external requests, no libraries, no build step
-        - must run from file:// offline
+      <div class="toolbar">
+        <button id="btnPlay" class="btn btn-primary" type="button" title="Play / Pause (Space)">▶&nbsp;Play</button>
+        <button id="btnStep" class="btn" type="button" title="Step one generation (→)">Step</button>
+        <button id="btnClear" class="btn" type="button" title="Clear the board (C)">Clear</button>
+        <button id="btnRandom" class="btn" type="button" title="Randomize at ~30% density (R)">Randomize</button>
 
-      Optional: expose `window.gameOfLifeStep(cells)` so glider-test.html
-      can verify your rules automatically (see README.md).
-    -->
-  </body>
+        <select id="patternSel" class="sel" title="Stamp a known pattern onto the grid">
+          <option value="">— Stamp a pattern —</option>
+          <option value="glider">Glider</option>
+          <option value="lwss">Lightweight Spaceship</option>
+          <option value="pulsar">Pulsar</option>
+          <option value="gun">Gosper Glider Gun</option>
+          <option value="blinker">Blinker</option>
+          <option value="rpent">R-pentomino</option>
+          <option value="acorn">Acorn</option>
+        </select>
+
+        <label class="field" title="Simulation speed">
+          <span>Speed</span>
+          <input id="speed" type="range" min="1" max="30" step="1" value="10" />
+          <b id="speedVal">10/s</b>
+        </label>
+
+        <label class="switch" title="Toroidal wrap: edges wrap around">
+          <input id="wrap" type="checkbox" checked />
+          <span class="track"><span class="thumb"></span></span>
+          <span>Wrap</span>
+        </label>
+
+        <label class="field" title="Grid size">
+          <span>Grid</span>
+          <select id="gridSel" class="sel">
+            <option value="60×40">60×40</option>
+            <option value="80×50">80×50</option>
+            <option value="120×75">120×75</option>
+            <option value="200×120">200×120</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="stage" id="stage">
+        <canvas id="board"></canvas>
+      </div>
+
+      <p class="hint" id="hint"></p>
+    </div>
+
+    <script>
+      'use strict';
+      (function () {
+        /* ==================================================================
+         * Pure engine — Conway's Game of Life, B3/S23, Moore neighbours.
+         * Edge behaviour: hard-wall (WALL) or toroidal wrap (WRAP).
+         * ================================================================== */
+        var WALL = 0, WRAP = 1;
+
+        function stepGrid(cells, mode) {
+          var rows = cells.length;
+          var cols = cells[0].length;
+          var next = new Array(rows);
+
+          if (mode === WRAP) {
+            for (var r = 0; r < rows; r++) {
+              var rUp = (r + rows - 1) % rows;
+              var rDn = (r + 1) % rows;
+              var rowU = cells[rUp], rowM = cells[r], rowD = cells[rDn];
+              var out = new Array(cols);
+              for (var c = 0; c < cols; c++) {
+                var cL = (c + cols - 1) % cols;
+                var cR = (c + 1) % cols;
+                var n =
+                  rowU[cL] + rowU[c] + rowU[cR] +
+                  rowM[cL] +             rowM[cR] +
+                  rowD[cL] + rowD[c] + rowD[cR];
+                var live = rowM[c] === 1;
+                out[c] = (live ? (n === 2 || n === 3) : n === 3) ? 1 : 0;
+              }
+              next[r] = out;
+            }
+          } else {
+            for (var r2 = 0; r2 < rows; r2++) {
+              var rowM2 = cells[r2];
+              var out2 = new Array(cols);
+              var up = r2 > 0 ? r2 - 1 : -1;
+              var dn = r2 < rows - 1 ? r2 + 1 : -1;
+              for (var c2 = 0; c2 < cols; c2++) {
+                var n2 = 0;
+                var lf = c2 > 0 ? c2 - 1 : -1;
+                var rg = c2 < cols - 1 ? c2 + 1 : -1;
+                if (up >= 0) {
+                  var rowA = cells[up];
+                  if (lf >= 0) n2 += rowA[lf];
+                  n2 += rowA[c2];
+                  if (rg >= 0) n2 += rowA[rg];
+                }
+                if (lf >= 0) n2 += rowM2[lf];
+                if (rg >= 0) n2 += rowM2[rg];
+                if (dn >= 0) {
+                  var rowB = cells[dn];
+                  if (lf >= 0) n2 += rowB[lf];
+                  n2 += rowB[c2];
+                  if (rg >= 0) n2 += rowB[rg];
+                }
+                var live2 = rowM2[c2] === 1;
+                out2[c2] = (live2 ? (n2 === 2 || n2 === 3) : n2 === 3) ? 1 : 0;
+              }
+              next[r2] = out2;
+            }
+          }
+          return next;
+        }
+
+        // Pure hard-wall step exposed for the automated grading hook (glider-test.html).
+        window.gameOfLifeStep = function (cells) {
+          return stepGrid(cells, WALL);
+        };
+
+        /* ==================================================================
+         * Patterns (ASCII rows: 'X' live, '.' dead)
+         * ================================================================== */
+        var PATTERNS = [
+          { id: 'glider', name: 'Glider', rows: ['.X.', '..X', 'XXX'] },
+          { id: 'lwss', name: 'Lightweight Spaceship', rows: ['.X..X', 'X....', 'X...X', 'XXXX.'] },
+          {
+            id: 'pulsar', name: 'Pulsar',
+            rows: [
+              '..XXX...XXX..',
+              '.............',
+              'X....X.X....X',
+              'X....X.X....X',
+              'X....X.X....X',
+              '..XXX...XXX..',
+              '.............',
+              '..XXX...XXX..',
+              'X....X.X....X',
+              'X....X.X....X',
+              'X....X.X....X',
+              '.............',
+              '..XXX...XXX..'
+            ]
+          },
+          {
+            id: 'gun', name: 'Gosper Glider Gun',
+            rows: [
+              '........................X...........',
+              '......................X.X...........',
+              '............XX......XX............XX',
+              '...........X...X....XX............XX',
+              'XX........X.....X...XX..............',
+              'XX........X...X.XX....X.X...........',
+              '..........X.....X.......X...........',
+              '...........X...X....................',
+              '............XX......................'
+            ]
+          },
+          { id: 'blinker', name: 'Blinker', rows: ['XXX'] },
+          { id: 'rpent', name: 'R-pentomino', rows: ['.XX', 'XX.', '.X.'] },
+          { id: 'acorn', name: 'Acorn', rows: ['.X.....', '...X...', 'XX..XXX'] }
+        ];
+        var PATTERN_MAP = {};
+        for (var pi = 0; pi < PATTERNS.length; pi++) {
+          var pat = PATTERNS[pi];
+          pat.w = pat.rows[0].length;
+          pat.h = pat.rows.length;
+          pat.offsets = [];
+          for (var pr = 0; pr < pat.h; pr++) {
+            for (var pc = 0; pc < pat.w; pc++) {
+              if (pat.rows[pr].charAt(pc) === 'X') pat.offsets.push([pr, pc]);
+            }
+          }
+          PATTERN_MAP[pat.id] = pat;
+        }
+
+        /* ==================================================================
+         * State
+         * ================================================================== */
+        var state = {
+          cols: 60,
+          rows: 40,
+          cells: null,
+          age: null,   // Uint8Array — live-cell age (drives the birth flash)
+          glow: null,  // Float32Array — fading trail of just-died cells
+          wrap: true,
+          speed: 10,   // generations per second
+          playing: false,
+          gen: 0,
+          pattern: null,
+          hover: null,
+          suppressSave: false
+        };
+
+        function fxAlloc() {
+          state.age = new Uint8Array(state.rows * state.cols);
+          state.glow = new Float32Array(state.rows * state.cols);
+        }
+
+        function emptyCells(cols, rows) {
+          var cells = new Array(rows);
+          for (var r = 0; r < rows; r++) cells[r] = new Array(cols).fill(0);
+          return cells;
+        }
+
+        state.cells = emptyCells(state.cols, state.rows);
+        fxAlloc();
+
+        /* ==================================================================
+         * Canvas / layout
+         * ================================================================== */
+        var canvas = document.getElementById('board');
+        var ctx = canvas.getContext('2d');
+        var canvasW = 0, canvasH = 0, cellPx = 0;
+
+        var C_BG = '#0a0d13';
+        var C_GRID = 'rgba(148, 163, 184, 0.06)';
+        var C_BASE = 'rgb(61, 209, 150)';
+        var C_MID = 'rgb(110, 237, 184)';
+        var C_NEW = 'rgb(200, 255, 230)';
+        var C_TRAIL = 'rgba(61, 209, 150, 0.20)';
+        var C_GHOST = 'rgba(110, 237, 184, 0.30)';
+
+        function layout() {
+          var stage = document.getElementById('stage');
+          var maxW = Math.max(120, stage.clientWidth - 16);
+          var maxH = Math.max(120, stage.clientHeight - 16);
+          cellPx = Math.max(1, Math.floor(Math.min(maxW / state.cols, maxH / state.rows)));
+          canvasW = cellPx * state.cols;
+          canvasH = cellPx * state.rows;
+          var dpr = Math.min(2, window.devicePixelRatio || 1);
+          canvas.width = Math.round(canvasW * dpr);
+          canvas.height = Math.round(canvasH * dpr);
+          canvas.style.width = canvasW + 'px';
+          canvas.style.height = canvasH + 'px';
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          draw();
+        }
+
+        function updateFx() {
+          var rows = state.rows, cols = state.cols;
+          for (var r = 0; r < rows; r++) {
+            var row = state.cells[r];
+            var base = r * cols;
+            for (var c = 0; c < cols; c++) {
+              var i = base + c;
+              if (row[c] === 1) {
+                if (state.age[i] < 250) state.age[i] += 1;
+                state.glow[i] = 1;
+              } else {
+                state.age[i] = 0;
+                var g = state.glow[i] * 0.85;
+                state.glow[i] = g < 0.015 ? 0 : g;
+              }
+            }
+          }
+        }
+
+        function draw() {
+          var w = canvasW, h = canvasH;
+          var rows = state.rows, cols = state.cols;
+
+          ctx.fillStyle = C_BG;
+          ctx.fillRect(0, 0, w, h);
+
+          if (cellPx >= 5) {
+            ctx.strokeStyle = C_GRID;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            for (var gx = 0; gx <= w; gx += cellPx) {
+              ctx.moveTo(gx + 0.5, 0);
+              ctx.lineTo(gx + 0.5, h);
+            }
+            for (var gy = 0; gy <= h; gy += cellPx) {
+              ctx.moveTo(0, gy + 0.5);
+              ctx.lineTo(w, gy + 0.5);
+            }
+            ctx.stroke();
+          }
+
+          // Death trail pass (only cells that recently died)
+          ctx.fillStyle = C_TRAIL;
+          for (var r = 0; r < rows; r++) {
+            var base = r * cols;
+            var c = 0;
+            while (c < cols) {
+              if (state.glow[base + c] > 0.015 && state.glow[base + c] < 0.85) {
+                var s = c;
+                while (c < cols && state.glow[base + c] > 0.015 && state.glow[base + c] < 0.85) c++;
+                ctx.fillRect(s * cellPx, r * cellPx, (c - s) * cellPx, cellPx);
+              } else {
+                c++;
+              }
+            }
+          }
+
+          // Live pass — runs of live cells batched by age bucket (births glow brighter)
+          for (var r2 = 0; r2 < rows; r2++) {
+            var row2 = state.cells[r2];
+            var base2 = r2 * cols;
+            var c2 = 0;
+            while (c2 < cols) {
+              if (row2[c2] === 1) {
+                var s2 = c2;
+                var bucket = state.age[base2 + c2] <= 1 ? 0 : (state.age[base2 + c2] <= 4 ? 1 : 2);
+                while (c2 < cols && row2[c2] === 1) {
+                  var nb = state.age[base2 + c2] <= 1 ? 0 : (state.age[base2 + c2] <= 4 ? 1 : 2);
+                  if (nb !== bucket) break;
+                  c2++;
+                }
+                ctx.fillStyle = bucket === 0 ? C_NEW : bucket === 1 ? C_MID : C_BASE;
+                ctx.fillRect(s2 * cellPx, r2 * cellPx, (c2 - s2) * cellPx, cellPx);
+              } else {
+                c2++;
+              }
+            }
+          }
+
+          // Pattern-placement ghost on hover
+          if (state.pattern && state.hover) {
+            var p = state.pattern;
+            var topR = state.hover.r - Math.floor(p.h / 2);
+            var topC = state.hover.c - Math.floor(p.w / 2);
+            ctx.fillStyle = C_GHOST;
+            for (var i = 0; i < p.offsets.length; i++) {
+              var rr = topR + p.offsets[i][0];
+              var cc = topC + p.offsets[i][1];
+              if (rr >= 0 && rr < rows && cc >= 0 && cc < cols) {
+                ctx.fillRect(cc * cellPx, rr * cellPx, cellPx, cellPx);
+              }
+            }
+          }
+        }
+
+        function loop() {
+          updateFx();
+          draw();
+          requestAnimationFrame(loop);
+        }
+
+        /* ==================================================================
+         * Actions
+         * ================================================================== */
+        function countLive() {
+          var n = 0;
+          for (var r = 0; r < state.rows; r++) {
+            var row = state.cells[r];
+            for (var c = 0; c < state.cols; c++) if (row[c] === 1) n++;
+          }
+          return n;
+        }
+
+        function updateStats() {
+          document.getElementById('genVal').textContent = String(state.gen);
+          document.getElementById('popVal').textContent = String(countLive());
+          document.getElementById('dimsVal').textContent = state.cols + '×' + state.rows;
+        }
+
+        function step() {
+          state.cells = stepGrid(state.cells, state.wrap ? WRAP : WALL);
+          state.gen += 1;
+          updateStats();
+          maybeSave();
+        }
+
+        function togglePlay() {
+          state.playing = !state.playing;
+          setTimer();
+          var btn = document.getElementById('btnPlay');
+          btn.innerHTML = state.playing ? '❚❚&nbsp;Pause' : '▶&nbsp;Play';
+          btn.classList.toggle('playing', state.playing);
+          if (!state.playing) saveUrl();
+        }
+
+        function clearBoard() {
+          state.cells = emptyCells(state.cols, state.rows);
+          state.gen = 0;
+          updateStats();
+          saveUrl();
+        }
+
+        function randomize() {
+          var rows = state.rows, cols = state.cols;
+          var cells = new Array(rows);
+          for (var r = 0; r < rows; r++) {
+            var row = new Array(cols);
+            for (var c = 0; c < cols; c++) row[c] = Math.random() < 0.3 ? 1 : 0;
+            cells[r] = row;
+          }
+          state.cells = cells;
+          state.gen = 0;
+          updateStats();
+          saveUrl();
+        }
+
+        function resizeBoard(cols, rows) {
+          if (cols === state.cols && rows === state.rows) return;
+          var old = state.cells, oc = state.cols, or = state.rows;
+          var cells = new Array(rows);
+          for (var r = 0; r < rows; r++) {
+            var row = new Array(cols).fill(0);
+            if (r < or) {
+              var src = old[r];
+              for (var c = 0; c < cols && c < oc; c++) row[c] = src[c];
+            }
+            cells[r] = row;
+          }
+          state.cells = cells;
+          state.cols = cols;
+          state.rows = rows;
+          fxAlloc();
+          layout();
+          updateStats();
+          syncGridSelect();
+          saveUrl();
+        }
+
+        function stampPattern(pattern, r, c) {
+          var topR = Math.floor(r - pattern.h / 2);
+          var topC = Math.floor(c - pattern.w / 2);
+          var placed = false;
+          for (var i = 0; i < pattern.offsets.length; i++) {
+            var rr = topR + pattern.offsets[i][0];
+            var cc = topC + pattern.offsets[i][1];
+            if (rr >= 0 && rr < state.rows && cc >= 0 && cc < state.cols) {
+              state.cells[rr][cc] = 1;
+              placed = true;
+            }
+          }
+          if (placed) {
+            updateStats();
+            saveUrl();
+          }
+        }
+
+        /* ==================================================================
+         * Persistence — board encoded in the URL hash (survives reload/share)
+         * ================================================================== */
+        var B64 = (function () {
+          var s = '';
+          for (var i = 0; i < 26; i++) s += String.fromCharCode(65 + i);
+          for (var j = 0; j < 26; j++) s += String.fromCharCode(97 + j);
+          for (var k = 0; k < 10; k++) s += String.fromCharCode(48 + k);
+          s += '-_';
+          return s;
+        })();
+        var B64_INDEX = {};
+        for (var bi = 0; bi < B64.length; bi++) B64_INDEX[B64.charAt(bi)] = bi;
+
+        function toBase64(cells, cols) {
+          var rows = cells.length;
+          var out = '';
+          var acc = 0, n = 0;
+          for (var r = 0; r < rows; r++) {
+            var row = cells[r];
+            for (var c = 0; c < cols; c++) {
+              acc = (acc << 1) | (row[c] ? 1 : 0);
+              n++;
+              if (n === 6) {
+                out += B64.charAt(acc);
+                acc = 0; n = 0;
+              }
+            }
+          }
+          if (n > 0) out += B64.charAt(acc << (6 - n));
+          return out;
+        }
+
+        function fromBase64(s, cols, rows) {
+          var cells = emptyCells(cols, rows);
+          var bit = 0;
+          var total = cols * rows;
+          for (var k = 0; k < s.length && bit < total; k++) {
+            var v = B64_INDEX[s.charAt(k)];
+            if (v === undefined) continue;
+            for (var b = 5; b>=0;b--) {
+              if (bit >= total) break;
+              if (v & (1 << b)) {
+                cells[Math.floor(bit / cols)][bit % cols] = 1;
+              }
+              bit++;
+            }
+          }
+          return cells;
+        }
+
+        var lastSave = 0;
+        function maybeSave() {
+          var now = Date.now();
+          if (now - lastSave > 3000) {
+            lastSave = now;
+            saveUrl();
+          }
+        }
+
+        function saveUrl() {
+          if (state.suppressSave) return;
+          var data = 'gol=1.' + state.cols + '.' + state.rows + '.' + (state.wrap ? 1 : 0) +
+            '.' + state.speed + '.' + toBase64(state.cells, state.cols);
+          try {
+            history.replaceState(null, '', '#' + data);
+          } catch (e) { /* ignore */ }
+        }
+
+        /* ==================================================================
+         * Persistence — URL loading
+         * ================================================================== */
+        function loadUrl() {
+          var h = location.hash;
+          if (!h || h.indexOf('#gol=') !== 0) return false;
+          var parts = h.slice(5).split('.');
+          if (parts.length < 6 || parts[0] !== '1') return false;
+          var cols = Math.min(400, parseInt(parts[1], 10) || 0);
+          var rows = Math.min(400, parseInt(parts[2], 10) || 0);
+          if (cols < 4 || rows < 4) return false;
+          state.cols = cols;
+          state.rows = rows;
+          state.wrap = parts[3] === '1';
+          var sp = parseInt(parts[4], 10);
+          state.speed = (sp >= 1 && sp <= 30) ? sp : 10;
+          var b64 = parts.slice(5).join('.');
+          if (b64.length * 6 < cols * rows) return false; // truncated/corrupt board
+          state.cells = fromBase64(b64, cols, rows);
+          return true;
+        }
+
+        /* ==================================================================
+         * Demo scene on a first visit (empty board)
+         * ================================================================== */
+        function buildDemo() {
+          stampPattern(PATTERN_MAP.gun, 6, 6);
+          stampPattern(PATTERN_MAP.blinker, 16, 43);
+          stampPattern(PATTERN_MAP.glider, 15, 50);
+          stampPattern(PATTERN_MAP.pulsar, 33, 22);
+          stampPattern(PATTERN_MAP.lwss, 22, 34);
+          stampPattern(PATTERN_MAP.rpent, 11, 20);
+          stampPattern(PATTERN_MAP.glider, 30, 6);
+          stampPattern(PATTERN_MAP.acorn, 8, 56);
+        }
+
+        /* ==================================================================
+         * Input — draw / erase / stamp / keys
+         * ================================================================== */
+        function eventCell(e) {
+          var rect = canvas.getBoundingClientRect();
+          var x = (e.clientX - rect.left) * (canvasW / rect.width);
+          var y = (e.clientY - rect.top) * (canvasH / rect.height);
+          var c = Math.floor(x / cellPx);
+          var r = Math.floor(y / cellPx);
+          if (r < 0) r = 0;
+          if (c < 0) c = 0;
+          if (r >= state.rows) r = state.rows - 1;
+          if (c >= state.cols) c = state.cols - 1;
+          return { r: r, c: c };
+        }
+
+        var painting = false;
+        var brush = 'draw';
+        var painted = false;
+
+        function paintCell(r, c) {
+          if (r < 0 || r >= state.rows || c < 0 || c >= state.cols) return;
+          state.cells[r][c] = brush === 'draw' ? 1 : 0;
+          updateStats();
+          painted = true;
+        }
+
+        function endPaint() {
+          painting = false;
+          if (painted) {
+            painted = false;
+            saveUrl();
+          }
+        }
+
+        canvas.addEventListener('pointerdown', function (e) {
+          e.preventDefault();
+          try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* noop */ }
+          var cell = eventCell(e);
+          if (state.pattern) {
+            stampPattern(state.pattern, cell.r, cell.c);
+            state.pattern = null;
+            document.getElementById('patternSel').value = '';
+            updateHint();
+            return;
+          }
+          brush = state.cells[cell.r][cell.c] === 1 ? 'erase' : 'draw';
+          painting = true;
+          paintCell(cell.r, cell.c);
+        });
+
+        canvas.addEventListener('pointermove', function (e) {
+          var cell = eventCell(e);
+          state.hover = cell;
+          if (painting && !state.pattern) paintCell(cell.r, cell.c);
+        });
+
+        canvas.addEventListener('pointerup', endPaint);
+        canvas.addEventListener('pointercancel', endPaint);
+        canvas.addEventListener('pointerleave', function () {
+          state.hover = null;
+        });
+
+        document.addEventListener('keydown', function (e) {
+          var tag = (e.target && e.target.tagName) || '';
+          if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+          if (e.key === ' ') {
+            e.preventDefault();
+            togglePlay();
+          } else if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            if (state.playing) togglePlay();
+            step();
+          } else if (e.key === 'c' || e.key === 'C') {
+            e.preventDefault();
+            clearBoard();
+          } else if (e.key === 'r' || e.key === 'R') {
+            e.preventDefault();
+            randomize();
+          } else if (e.key === 'Escape') {
+            state.pattern = null;
+            document.getElementById('patternSel').value = '';
+            updateHint();
+          }
+        });
+
+        /* ==================================================================
+         * Toolbar wiring / timers
+         * ================================================================== */
+        var timer = null;
+        function setTimer() {
+          clearInterval(timer);
+          timer = null;
+          if (state.playing) {
+            timer = setInterval(step, Math.max(16, 1000 / state.speed));
+          }
+        }
+
+        function updateHint() {
+          var hint = document.getElementById('hint');
+          if (state.pattern) {
+            hint.textContent = 'Pattern selected — click the board to stamp it · re-open the menu or press Esc to cancel';
+          } else {
+            hint.textContent = 'Click & drag to draw · Space play/pause · → step · C clear · R randomize · pick a pattern to stamp';
+          }
+        }
+
+        function syncGridSelect() {
+          var sel = document.getElementById('gridSel');
+          var v = state.cols + '×' + state.rows;
+          for (var i = 0; i < sel.options.length; i++) {
+            if (sel.options[i].value === v) {
+              sel.selectedIndex = i;
+              return;
+            }
+          }
+          var opt = sel.options[sel.options.length - 1];
+          if (opt && opt.value === 'custom') {
+            opt.setAttribute('data-size', v);
+            opt.textContent = 'Custom ' + v;
+            sel.value = 'custom';
+          }
+        }
+
+        function initUI() {
+          var speed = document.getElementById('speed');
+          speed.value = String(state.speed);
+          document.getElementById('speedVal').textContent = state.speed + '/s';
+          document.getElementById('wrap').checked = state.wrap;
+
+          document.getElementById('btnPlay').addEventListener('click', togglePlay);
+          document.getElementById('btnStep').addEventListener('click', step);
+          document.getElementById('btnClear').addEventListener('click', clearBoard);
+          document.getElementById('btnRandom').addEventListener('click', randomize);
+
+          document.getElementById('patternSel').addEventListener('change', function (e) {
+            var id = e.target.value;
+            state.pattern = id ? (PATTERN_MAP[id] || null) : null;
+            updateHint();
+          });
+
+          speed.addEventListener('input', function (e) {
+            state.speed = parseInt(e.target.value, 10) || 10;
+            document.getElementById('speedVal').textContent = state.speed + '/s';
+            setTimer();
+            saveUrl();
+          });
+
+          document.getElementById('wrap').addEventListener('change', function (e) {
+            state.wrap = e.target.checked;
+            saveUrl();
+          });
+
+          document.getElementById('gridSel').addEventListener('change', function (e) {
+            var v = e.target.value;
+            if (v === 'custom') {
+              var opt = e.target.selectedOptions && e.target.selectedOptions[0];
+              var ds = opt && opt.getAttribute('data-size');
+              if (!ds) return;
+              v = ds;
+            }
+            var parts = v.split('×');
+            var nc = parseInt(parts[0], 10);
+            var nr = parseInt(parts[1], 10);
+            if (nc >= 4 && nr >= 4 && nc <= 400 && nr <= 400) {
+              resizeBoard(nc, nr);
+            }
+          });
+        }
+
+        /* ==================================================================
+         * Boot
+         * ================================================================== */
+        var hadUrl = loadUrl();
+        if (!hadUrl) {
+          buildDemo();
+        }
+        fxAlloc();
+        syncGridSelect();
+        updateStats();
+        layout();
+        updateHint();
+        initUI();
+        loop();
+
+        window.addEventListener('resize', function () {
+          layout();
+        });
+      })();
+    </script>
+</body>
 </html>
