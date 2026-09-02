@@ -224,10 +224,14 @@ export function createScene(container, options) {
     return mesh ? mesh.instanceMatrix.count : 0;
   }
 
-  /** Build a fresh live layer (geometry + material) for a skin definition. */
+  /** Build a fresh live layer (geometry + material) for a skin definition.
+   *  The allocation is hard-capped at the scene's lattice cell budget so an
+   *  oversized/`malicious` snapshot can never trigger a huge InstancedMesh or
+   *  glow-point buffer. */
   function buildLiveLayer(skinDef, capacityArg) {
     const style = skinDef.style;
-    const capacity = Math.max(capacityArg ?? INSTANCE_CHUNK, INSTANCE_CHUNK);
+    const desired = Number.isFinite(capacityArg) ? capacityArg : INSTANCE_CHUNK;
+    const capacity = Math.min(Math.max(Math.trunc(desired), INSTANCE_CHUNK), maxCells);
 
     const geometry =
       style === "organic"
@@ -316,16 +320,18 @@ export function createScene(container, options) {
 
     const items = snapshotWithAges();
 
-    // Growth guard: if the population exceeds the current allocation, rebuild bigger.
+    // Growth guard: if the population exceeds the current allocation, rebuild
+    // bigger — but never beyond the scene's hard cell budget (maxCells).
     if (liveMesh && items.length > meshCapacity(liveMesh)) {
       disposeLiveLayer();
       buildLiveLayer(activeSkin, Math.max(maxCells, items.length));
     }
 
+    const drawCount = Math.min(items.length, maxCells);
     if (!liveMesh) return; // defensive: no layer built (empty lattice before boot)
-    liveMesh.count = items.length;
+    liveMesh.count = drawCount;
     PALETTE_END.set(activeSkin.palette.old);
-    for (let i = 0; i < items.length; i++) {
+    for (let i = 0; i < drawCount; i++) {
       const [x, y, z, ticks] = items[i];
       const t = ageNormalized(ticks);
       if (activeSkin.style === "wireframe") {
@@ -341,11 +347,11 @@ export function createScene(container, options) {
 
     if (liveGlow) {
       const position = liveGlow.geometry.attributes.position;
-      for (let i = 0; i < items.length; i++) {
+      for (let i = 0; i < drawCount; i++) {
         position.setXYZ(i, items[i][0], items[i][1], items[i][2]);
       }
       position.needsUpdate = true;
-      liveGlow.geometry.setDrawRange(0, items.length);
+      liveGlow.geometry.setDrawRange(0, drawCount);
     }
   }
 

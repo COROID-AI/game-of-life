@@ -15,7 +15,16 @@
  *   ]
  * }
  * ```
+ *
+ * Validation enforces the shared world bounds: `size` is capped at
+ * `MAX_GRID_SIZE`, the live/dead cell list is capped at `MAX_WORLD_CELLS`
+ * (the volume of the largest lattice), and every coordinate must be an
+ * integer inside `[-size/2, size/2)` on each axis. This keeps untrusted
+ * snapshots (e.g. from a relay) from driving peers into O(size^3) ticks or
+ * unbounded GPU instancing allocations.
  */
+
+import { MAX_GRID_SIZE, MAX_WORLD_CELLS } from "./simulation.js";
 
 export const WORLD_STATE_SCHEMA = Object.freeze({
   type: "object",
@@ -41,7 +50,18 @@ export const WORLD_STATE_SCHEMA = Object.freeze({
   additionalProperties: false,
 });
 
-/** Validates a world snapshot against the compact schema above. */
+/** Coordinate bound for a lattice edge length: half-extent exclusive. */
+function halfFor(size) {
+  return Math.floor(size / 2);
+}
+
+/**
+ * Validates a world snapshot against the shared schema plus hard caps.
+ *
+ * The relay gate and the client session both reject snapshots that exceed
+ * the grid-size / cell-count caps or that carry coordinates outside the
+ * lattice, so a malicious host cannot freeze peers with oversized worlds.
+ */
 export function validateWorldState(value) {
   if (!value || typeof value !== "object") {
     throw new TypeError("world state must be an object");
@@ -52,9 +72,16 @@ export function validateWorldState(value) {
   if (!Number.isInteger(value.size) || value.size < 1) {
     throw new TypeError("world state size must be a positive integer");
   }
+  if (value.size > MAX_GRID_SIZE) {
+    throw new RangeError(`world state size ${value.size} exceeds the cap of ${MAX_GRID_SIZE}`);
+  }
   if (!Array.isArray(value.cells)) {
     throw new TypeError("world state cells must be an array");
   }
+  if (value.cells.length > MAX_WORLD_CELLS) {
+    throw new RangeError(`world state cells length ${value.cells.length} exceeds the cap of ${MAX_WORLD_CELLS}`);
+  }
+  const half = halfFor(value.size);
   for (const cell of value.cells) {
     if (!Array.isArray(cell) || cell.length !== 4) {
       throw new TypeError("each cell entry must be [x, y, z, alive]");
@@ -62,6 +89,11 @@ export function validateWorldState(value) {
     for (let i = 0; i < 3; i++) {
       if (!Number.isInteger(cell[i])) {
         throw new TypeError(`cell coordinate ${i} must be an integer`);
+      }
+      if (cell[i] < -half || cell[i] >= half) {
+        throw new RangeError(
+          `cell coordinate ${i} (${cell[i]}) must be in [-${half}, ${half - 1}] for size ${value.size}`,
+        );
       }
     }
     if (cell[3] !== 0 && cell[3] !== 1) {

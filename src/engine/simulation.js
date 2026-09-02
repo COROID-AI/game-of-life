@@ -37,6 +37,8 @@ export const DEFAULTS = Object.freeze({
   seedDensity: 0.2,
 });
 
+import { MAX_GRID_SIZE, MAX_WORLD_CELLS } from "../contracts/simulation.js";
+
 const NBRS = (() => {
   const list = [];
   for (let dx = -1; dx <= 1; dx++) {
@@ -61,8 +63,27 @@ function key(x, y, z) {
   return `${x},${y},${z}`;
 }
 
+/** Guard used by restore paths: never build or inherit an oversized lattice. */
+function assertSizeWithinCap(size) {
+  if (!Number.isInteger(size) || size < 1 || size > MAX_GRID_SIZE) {
+    throw new RangeError(`world size must be an integer in [1, ${MAX_GRID_SIZE}]`);
+  }
+}
+
+/** Guard used by restore paths: never adopt more cells than the cap allows. */
+function assertCellsWithinCap(count) {
+  if (!Number.isInteger(count) || count < 0 || count > MAX_WORLD_CELLS) {
+    throw new RangeError(`cell count must be in [0, ${MAX_WORLD_CELLS}]`);
+  }
+}
+
 function createWorld(sizeArg, seedDensity, rng) {
   const size = Number.isInteger(sizeArg) && sizeArg > 0 ? sizeArg : DEFAULTS.size;
+  // Hard cap on the initial lattice too (grid presets are bounded; never let
+  // an unbounded createSimulation allocate a huge cube).
+  if (size > MAX_GRID_SIZE) {
+    throw new RangeError(`world size ${size} exceeds the cap of ${MAX_GRID_SIZE}`);
+  }
   const density = typeof seedDensity === "number" ? seedDensity : DEFAULTS.seedDensity;
   if (!Number.isFinite(density) || density < 0 || density > 1) {
     throw new RangeError("seedDensity must be a number between 0 and 1");
@@ -224,9 +245,22 @@ export function createSimulation(options = {}) {
     if (!snapshot || !Number.isInteger(snapshot.size) || !Array.isArray(snapshot.cells)) {
       throw new TypeError("snapshot must contain integer size and a cells array");
     }
-    world = { size: snapshot.size, half: Math.floor(snapshot.size / 2), cells: new Map() };
+    // Hard caps: a promoted host or a bridged snapshot must never resurrect an
+    // unbounded lattice (CPU O(size^3)) or an unbounded cell list (GPU/relay).
+    assertSizeWithinCap(snapshot.size);
+    assertCellsWithinCap(snapshot.cells.length);
+    const half = Math.floor(snapshot.size / 2);
+    world = { size: snapshot.size, half, cells: new Map() };
     for (const cell of snapshot.cells) {
-      if (cell[3] === 1) setCell(cell[0], cell[1], cell[2], 1);
+      if (cell[3] === 1) {
+        const x = cell[0];
+        const y = cell[1];
+        const z = cell[2];
+        // Keep the engine invariant: coordinates are integers in [-half, half).
+        if (x >= -half && x < half && y >= -half && y < half && z >= -half && z < half) {
+          world.cells.set(key(x, y, z), 1);
+        }
+      }
     }
     generation = snapshot.generation ?? 0;
     return world.cells;
@@ -242,6 +276,11 @@ export function createSimulation(options = {}) {
    */
   function resize(newSize) {
     const sizeArg = Number.isInteger(newSize) && newSize > 0 ? newSize : DEFAULTS.size;
+    // Hard cap: grid presets never exceed MAX_GRID_SIZE; keep an explicit
+    // guard here so a bridge/resize call cannot allocate an oversized cube.
+    if (sizeArg > MAX_GRID_SIZE) {
+      throw new RangeError(`resize target ${sizeArg} exceeds the cap of ${MAX_GRID_SIZE}`);
+    }
     const prev = world.cells;
     world = { size: sizeArg, half: Math.floor(sizeArg / 2), cells: new Map() };
     const half = Math.floor(sizeArg / 2);

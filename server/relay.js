@@ -31,6 +31,7 @@ import { WebSocketServer, WebSocket } from "ws";
 
 import {
   MAX_GRID_SIZE,
+  MAX_WORLD_CELLS,
   MAX_ROOM_CLIENTS,
   MAX_NAME_LENGTH,
   MAX_MESSAGE_BYTES,
@@ -101,7 +102,38 @@ function pickNextHost(room) {
   return candidates[0] ?? null;
 }
 
+/**
+ * Remove a client from whatever room it currently belongs to before it joins
+ * or creates another. Rooms and `client.room` are kept consistent here so a
+ * socket can never linger as a stale peer in a previous room (roster leak /
+ * authority confusion). Returns the previous room (or null).
+ */
+function detachFromRoom(client) {
+  const previous = client.room;
+  if (previous) {
+    previous.peers.delete(client.id);
+    broadcast(previous, rosterMessage(previous), client.socket);
+    hostEnsure(previous);
+  }
+  client.room = null;
+  return previous;
+}
+
+/** Reject a room entry when the socket is already a peer somewhere else. */
+function ensureNotJoined(client) {
+  if (client.room) {
+    send(client.socket, {
+      type: "error",
+      code: "already-in-room",
+      message: "Leave the current room before creating or joining another",
+    });
+    return false;
+  }
+  return true;
+}
+
 function createRoom(hostClient, name, requestedCode) {
+  if (!ensureNotJoined(hostClient)) return null;
   let code = requestedCode && isRoomCode(normalizeRoomCode(requestedCode))
     ? normalizeRoomCode(requestedCode)
     : makeRoomCode();
@@ -127,6 +159,7 @@ function createRoom(hostClient, name, requestedCode) {
 }
 
 function joinRoom(socket, message) {
+  if (!ensureNotJoined(clients.get(socket))) return;
   const code = normalizeRoomCode(message.roomCode ?? "");
   const room = rooms.get(code);
   if (!room) {
@@ -277,13 +310,27 @@ function handleSnapshot(socket, message) {
   broadcast(room, { type: "snapshot", ...snapshot }, socket);
 }
 
-/** Convert a host snapshot message (full or delta) into a full world snapshot.
- *  Keeps the authoritative `rule` and `running` flags so a late join or a
- *  host handoff restores the exact transition + play/pause state. */
+/**
+ * Convert a host snapshot message (full or delta) into a full world snapshot.
+ * Keeps the authoritative `rule` and `running` flags so a late join or a
+ * host handoff restores the exact transition + play/pause state.
+ *
+ * Hard caps are enforced inline (in addition to validateWorldState below):
+ * `size` and the merged live-cell count are bounded by the shared protocol
+ * cap so an oversized or unbounded host broadcast is rejected before any
+ * peer receives it.
+ */
 function normalizeSnapshotMessage(message, room) {
   const metaCarrier = {};
   if (message.running === true || message.running === false) metaCarrier.running = message.running;
   if (message.rule && typeof message.rule === "object") metaCarrier.rule = message.rule;
+
+  const candidateSize = message.size ?? room.snapshot?.size ?? 16;
+  if (!Number.isInteger(candidateSize) || candidateSize < 1 || candidateSize > MAX_GRID_SIZE) {
+    throw new RangeError(
+      `world size ${candidateSize} exceeds the cap of ${MAX_GRID_SIZE}`,
+    );
+  }
 
   let result;
   if (message.full === false && Array.isArray(message.changes)) {
@@ -295,18 +342,24 @@ function normalizeSnapshotMessage(message, room) {
     }
     const merged = snapshotFromMap(base, {
       generation: message.generation ?? room.snapshot?.generation ?? 0,
-      size: message.size ?? room.snapshot?.size ?? 16,
+      size: candidateSize,
     });
     merged.population = Number.isInteger(message.population) ? message.population : merged.cells.length;
     result = merged;
   } else {
     const full = {
       generation: message.generation ?? 0,
-      size: message.size ?? 16,
+      size: candidateSize,
       cells: Array.isArray(message.cells) ? message.cells : [],
     };
     validateWorldState(full);
     result = full;
+  }
+  const cellCount = result.cells.length;
+  if (!Number.isInteger(cellCount) || cellCount > MAX_WORLD_CELLS) {
+    throw new RangeError(
+      `snapshot live-cell count ${cellCount} exceeds the cap of ${MAX_WORLD_CELLS}`,
+    );
   }
   if (Object.keys(metaCarrier).length > 0) {
     result = { ...result, ...metaCarrier };
@@ -318,11 +371,7 @@ function normalizeSnapshotMessage(message, room) {
 function handleLeave(socket) {
   const client = clients.get(socket);
   if (!client?.room) return;
-  const room = client.room;
-  room.peers.delete(client.id);
-  client.room = null;
-  broadcast(room, rosterMessage(room));
-  hostEnsure(room);
+  const room = detachFromRoom(client);
   log(`${client.id} left ${room.id} (${room.peers.size} players)`);
 }
 
@@ -363,18 +412,20 @@ wss.on("connection", (socket) => {
       return;
     }
     switch (message?.type) {
-      case "createRoom":
-        createRoom(client, message.name ?? "", message.room ?? "");
-        send(socket, {
+      case "createRoom": {
+        const room = createRoom(client, message.name ?? "", message.room ?? "");
+        if (!room) break; // already-in-room guard rejected the request
+        send(client.socket, {
           type: "joined",
           peerId: client.id,
-          roomCode: client.room.id,
-          hostId: client.room.hostId,
-          worldSize: client.room.snapshot?.size ?? 16,
-          peers: [...client.room.peers.values()].map(peerRecord),
+          roomCode: room.id,
+          hostId: room.hostId,
+          worldSize: room.snapshot?.size ?? 16,
+          peers: [...room.peers.values()].map(peerRecord),
           role: "host",
         });
         break;
+      }
       case "join":
         joinRoom(socket, message);
         break;
@@ -399,9 +450,7 @@ wss.on("connection", (socket) => {
   socket.on("close", () => {
     clients.delete(socket);
     if (client.room) {
-      client.room.peers.delete(client.id);
-      broadcast(client.room, rosterMessage(client.room));
-      hostEnsure(client.room);
+      detachFromRoom(client);
       log(`client ${client.id} disconnected (${clients.size} online)`);
     }
   });

@@ -272,6 +272,68 @@ async function runInteractiveChecks(browser, server) {
     check("fps: large preset applied with reading", preset.size === 32 && Number(fpsLarge) > 0, `size=${preset?.size} fps=${fpsLarge}`);
     await ctx.close();
   }
+
+  // ---- 8. Multiplayer room switch (no stale peers/handoff regression) -------------
+  {
+    const { ctx: hctx, page: hostA, errors: herrA } = await newPage(browser, server.appUrl);
+    const { ctx: gctx, page: guest, errors: gerr } = await newPage(browser, server.appUrl);
+    await hostA.locator("#mp-create").waitFor({ state: "attached", timeout: 20000 });
+    await guest.locator("#mp-join").waitFor({ state: "attached", timeout: 20000 });
+
+    // Room A: host creates, guest joins.
+    await hostA.click("#mp-create");
+    await wait(1000);
+    const codeA = (await hostA.locator(".mp-code").textContent()).trim();
+    await guest.fill("#mp-join-code", codeA);
+    await guest.click("#mp-join");
+    let guestAStatus = "connecting";
+    for (let i = 0; i < 40; i++) {
+      guestAStatus = (await guest.locator("#mp-status").textContent()).trim();
+      if (guestAStatus.includes("joined") || guestAStatus.includes("host")) break;
+      await wait(500);
+    }
+    check("room-switch: guest joins room A", guestAStatus.includes("joined") || guestAStatus.includes("host"), guestAStatus);
+
+    // Host leaves Room A, then creates Room B from the SAME browser session.
+    await hostA.click("#mp-leave");
+    await wait(700);
+    const leftStatus = (await hostA.locator("#mp-status").textContent()).trim();
+    check("room-switch: host leaves room A", leftStatus.includes("left"), leftStatus);
+
+    await hostA.click("#mp-create");
+    await wait(1200);
+    const codeB = (await hostA.locator(".mp-code").textContent()).trim();
+    const hostBStatus = (await hostA.locator("#mp-status").textContent()).trim();
+    check("room-switch: host creates room B after leaving", hostBStatus.includes("host") && codeB !== codeA, `${hostBStatus} code=${codeB}`);
+
+    // The guest must NOT see the stale host peer from room A once the host left;
+    // guest roster should drop to zero peers (host left) — no stale peer remains.
+    await wait(800);
+    const guestRosterAfterHostLeft = await guest.locator(".mp-peer").count();
+    check("room-switch: no stale peer in room A after host leaves", guestRosterAfterHostLeft === 0, `peers=${guestRosterAfterHostLeft}`);
+
+    // A second guest joins Room B and the new room works end-to-end.
+    const { ctx: hctx2, page: guest2, errors: g2err } = await newPage(browser, server.appUrl);
+    await guest2.locator("#mp-join").waitFor({ state: "attached", timeout: 20000 });
+    await guest2.fill("#mp-join-code", codeB);
+    await guest2.click("#mp-join");
+    let guest2Status = "connecting";
+    for (let i = 0; i < 40; i++) {
+      guest2Status = (await guest2.locator("#mp-status").textContent()).trim();
+      if (guest2Status.includes("joined") || guest2Status.includes("host")) break;
+      await wait(500);
+    }
+    check("room-switch: guest joins room B", guest2Status.includes("joined") || guest2Status.includes("host"), guest2Status);
+    const hostBRoster = await hostA.locator(".mp-peer").count();
+    check("room-switch: room B roster shows host + new guest", hostBRoster >= 1, `peers=${hostBRoster}`);
+
+    const errs = [...herrA, ...gerr, ...g2err];
+    check("room-switch: no console errors across the switch flow", errs.length === 0, errs.join(" | "));
+
+    await hctx.close();
+    await gctx.close();
+    await hctx2.close();
+  }
 }
 
 async function main() {

@@ -22,6 +22,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { createSimulation } from "../engine/simulation.js";
+import { MAX_GRID_SIZE } from "../net/protocol.js";
 
 const RELAY_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "server", "relay.js");
 
@@ -218,4 +219,128 @@ test("relay e2e: host creates, joiner joins, media actions sync, host handoff co
   assert.ok(lateJoined.snapshot, "late joiner should receive the cached snapshot");
   assert.equal(lateJoined.snapshot.cells.length, 2);
   assert.equal(lateJoined.snapshot.generation, 0);
+});
+
+test("relay hardening: create/join while already in a room is rejected without stale peers", async (t) => {
+  if (!hasWebSocket()) {
+    t.skip("no native WebSocket in this Node version");
+    return;
+  }
+  const port = await getFreePort();
+  const relay = spawn(process.execPath, [RELAY_PATH], {
+    env: { ...process.env, PORT: String(port), HOST: "127.0.0.1" },
+    stdio: ["ignore", "ignore", "inherit"],
+  });
+  t.after(() => {
+    try { relay.kill("SIGTERM"); } catch { /* ignore */ }
+  });
+  const url = `ws://127.0.0.1:${port}/ws`;
+
+  let ready = false;
+  for (let i = 0; i < 30; i++) {
+    try {
+      const probe = new WebSocket(url);
+      const ok = await waitForOpen(probe, 700);
+      if (ok) { try { probe.close(); } catch { /* ignore */ } ready = true; break; }
+      try { probe.close(); } catch { /* ignore */ }
+    } catch { /* ignore */ }
+    await delay(150);
+  }
+  assert.ok(ready, "relay did not accept a WebSocket connection");
+
+  const host = testClient(url, "Host");
+  if (!(await host.open)) throw new Error("host could not connect");
+  host.send({ type: "createRoom", name: "Host" });
+  const joined = await host.waitFor("joined");
+  const code = joined.roomCode;
+
+  // While already in a room, a second create must be rejected and leave the
+  // first room unchanged (no stale peer, no roster leak, client still joined).
+  host.send({ type: "createRoom", name: "Host2" });
+  const rejected = await host.waitFor("error", 3000);
+  assert.equal(rejected.code, "already-in-room");
+  assert.equal(host.messages.filter((m) => m.type === "joined").length, 1, "no second joined");
+  const codeNow = host.messages.filter((m) => m.type === "joined").pop().roomCode;
+  assert.equal(codeNow, code, "room unchanged after rejected create");
+
+  // The original room roster must still contain exactly the host (1 peer).
+  const joiner = testClient(url, "Joiner");
+  if (!(await joiner.open)) throw new Error("joiner could not connect");
+  joiner.send({ type: "join", roomCode: code, name: "Joiner", worldSize: 16 });
+  const joinerJoined = await joiner.waitFor("joined");
+  assert.equal(joinerJoined.peers.length, 2, "original room has host + joiner only");
+});
+
+test("relay hardening: oversized host snapshot (size + cells) is rejected and dropped", async (t) => {
+  if (!hasWebSocket()) {
+    t.skip("no native WebSocket in this Node version");
+    return;
+  }
+  const port = await getFreePort();
+  const relay = spawn(process.execPath, [RELAY_PATH], {
+    env: { ...process.env, PORT: String(port), HOST: "127.0.0.1" },
+    stdio: ["ignore", "ignore", "inherit"],
+  });
+  t.after(() => {
+    try { relay.kill("SIGTERM"); } catch { /* ignore */ }
+  });
+  const url = `ws://127.0.0.1:${port}/ws`;
+
+  let ready = false;
+  for (let i = 0; i < 30; i++) {
+    try {
+      const probe = new WebSocket(url);
+      const ok = await waitForOpen(probe, 700);
+      if (ok) { try { probe.close(); } catch { /* ignore */ } ready = true; break; }
+      try { probe.close(); } catch { /* ignore */ }
+    } catch { /* ignore */ }
+    await delay(150);
+  }
+  assert.ok(ready, "relay did not accept a WebSocket connection");
+
+  const host = testClient(url, "Host");
+  if (!(await host.open)) throw new Error("host could not connect");
+  host.send({ type: "createRoom", name: "Host" });
+  const joined = await host.waitFor("joined");
+  const code = joined.roomCode;
+
+  const joiner = testClient(url, "Joiner");
+  if (!(await joiner.open)) throw new Error("joiner could not connect");
+  joiner.send({ type: "join", roomCode: code, name: "Joiner", worldSize: 16 });
+  await joiner.waitFor("joined");
+
+  // 1) Oversized size must be rejected (relay sends error, no snapshot broadcast).
+  host.send({
+    type: "snapshot", full: true, generation: 0,
+    size: MAX_GRID_SIZE + 1, cells: [],
+  });
+  const sizeError = await host.waitFor("error", 3000);
+  assert.equal(sizeError.code, "invalid-snapshot");
+  assert.match(sizeError.message, /exceeds the cap/);
+  const noSnapStreamed = joiner.messages.every((m) => m.type !== "snapshot");
+  assert.ok(noSnapStreamed, "joiner must not receive the oversized snapshot");
+
+  // 2) Valid size but excessive cell list must be rejected too.
+  const tooMany = [];
+  for (let i = 0; i < MAX_GRID_SIZE ** 3 + 1; i++) {
+    tooMany.push([i % MAX_GRID_SIZE, (i * 7) % MAX_GRID_SIZE, (i * 13) % MAX_GRID_SIZE, 1]);
+  }
+  host.send({
+    type: "snapshot", full: true, generation: 0,
+    size: MAX_GRID_SIZE, cells: tooMany,
+  });
+  const cellError = await host.waitFor("error", 3000);
+  assert.equal(cellError.code, "invalid-snapshot");
+  assert.match(cellError.message, /exceeds the cap/);
+  const stillNoSnap = joiner.messages.every((m) => m.type !== "snapshot");
+  assert.ok(stillNoSnap, "joiner must not receive the oversized cell-list snapshot");
+
+  // 3) A legitimate snapshot afterwards still works (relay is not poisoned).
+  host.send({
+    type: "snapshot", full: true, generation: 1, size: 16,
+    cells: [[0, 0, 0, 1], [1, 1, 1, 1]],
+  });
+  const okSnap = await joiner.waitFor("snapshot", 3000);
+  assert.equal(okSnap.size, 16);
+  assert.equal(okSnap.cells.length, 2);
 });

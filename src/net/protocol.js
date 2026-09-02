@@ -37,11 +37,14 @@
  */
 
 import { validateWorldState, isRuleSet } from "../contracts/index.js";
+import { MAX_GRID_SIZE, MAX_WORLD_CELLS } from "../contracts/simulation.js";
 
 // ---- Caps shared by client + server ---------------------------------------
 
-/** Largest cubic lattice a room may carry (grid-size cap). */
-export const MAX_GRID_SIZE = 32;
+/** Largest cubic lattice a room may carry (grid-size cap). Re-exported from
+ *  the contracts layer so every consumer (grid presets, relay, validation)
+ *  shares one constant instead of redefining it. */
+export { MAX_GRID_SIZE, MAX_WORLD_CELLS };
 
 /** Hard ceiling for the host tick/broadcast rate in ticks per second. */
 export const MAX_TICK_RATE = 8;

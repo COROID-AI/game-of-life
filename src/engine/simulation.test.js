@@ -216,3 +216,39 @@ test("countAlive respects dead cells set explicitly to 0", () => {
   sim.setCell(1, 0, 0, 0);
   assert.equal(sim.population, 1);
 });
+
+test("engine: oversized createSimulation/resize/fromSnapshot are rejected at the cap", () => {
+  // createSimulation with a size above the shared cap must not allocate a huge cube.
+  assert.throws(() => createSimulation({ size: 10_000, seedDensity: 0 }), /exceeds the cap/);
+
+  const sim = createSimulation({ size: 16, seedDensity: 0 });
+  // resize to an oversized lattice must be rejected.
+  assert.throws(() => sim.resize(10_000), /exceeds the cap/);
+
+  // fromSnapshot restoring an oversized size must be rejected (host-promotion path).
+  assert.throws(
+    () => sim.fromSnapshot({ generation: 0, size: 10_000, cells: [] }),
+    /exceeds the cap|must be an integer in \[1, /,
+  );
+  assert.equal(sim.size, 16, "rejected snapshot must not mutate the world");
+});
+
+test("engine: fromSnapshot caps the cell list and drops out-of-bounds cells", () => {
+  const sim = createSimulation({ size: 16, seedDensity: 0 });
+  // Excessive cell list: must be rejected outright (not partially applied).
+  const tooMany = [];
+  for (let i = 0; i < 40_000; i++) {
+    tooMany.push([i % 16, (i * 3) % 16, (i * 5) % 16, 1]);
+  }
+  assert.throws(() => sim.fromSnapshot({ generation: 0, size: 16, cells: tooMany }), /cell count/);
+
+  // Out-of-bounds live cells are dropped instead of corrupting the world.
+  sim.fromSnapshot({
+    generation: 4,
+    size: 16,
+    cells: [[8, 0, 0, 1], [0, 8, 0, 1], [0, 0, 8, 1], [1, 1, 1, 1]],
+  });
+  assert.equal(sim.generation, 4);
+  assert.equal(sim.population, 1); // only (1,1,1) is in [-8, 7]
+  assert.equal(sim.getCell(1, 1, 1), 1);
+});

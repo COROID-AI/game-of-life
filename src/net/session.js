@@ -22,8 +22,9 @@ import {
   peerColorFor,
   diffSnapshots,
   DELTA_THRESHOLD,
+  MAX_TICK_RATE,
 } from "./protocol.js";
-import { MAX_TICK_RATE } from "./protocol.js";
+import { validateWorldState } from "../contracts/index.js";
 
 /** Roles a peer holds in a room session. */
 export const PEER_ROLE = Object.freeze({ HOST: "host", JOINER: "joiner" });
@@ -385,8 +386,15 @@ export function createSession(sim, handlers = {}) {
     return map;
   }
 
-  /** Normalize a wire snapshot (full or delta) into a full world-state. */
+  /**
+   * Normalize a wire snapshot (full or delta) into a full world-state.
+   * The normalized result must satisfy the shared world contract (size and
+   * cell-count caps + in-bounds coordinates) before it is handed to the
+   * simulation; otherwise it is rejected so a bad frame cannot poison the
+   * room or resurrect an oversized lattice after a host handoff.
+   */
   function normalizeSnapshot(message) {
+    let snapshot;
     if (message.full === false && Array.isArray(message.changes)) {
       const base = mapFromSnapshot(lastSnapshot);
       for (const cell of message.changes) {
@@ -398,23 +406,34 @@ export function createSession(sim, handlers = {}) {
       for (const k of base.keys()) {
         cells.push([...k.split(",").map(Number), 1]);
       }
-      return {
+      snapshot = {
         generation: message.generation ?? 0,
         size: message.size ?? sim.size,
         population: message.population ?? cells.length,
         cells,
       };
+    } else {
+      snapshot = {
+        generation: message.generation ?? 0,
+        size: message.size ?? sim.size,
+        population: message.population ?? (Array.isArray(message.cells) ? message.cells.length : 0),
+        cells: Array.isArray(message.cells) ? message.cells : [],
+      };
     }
-    return {
-      generation: message.generation ?? 0,
-      size: message.size ?? sim.size,
-      population: message.population ?? (Array.isArray(message.cells) ? message.cells.length : 0),
-      cells: Array.isArray(message.cells) ? message.cells : [],
-    };
+    validateWorldState(snapshot);
+    return snapshot;
   }
 
+  /** Apply an authoritative snapshot; rejects out-of-contract frames. */
   function acceptSnapshot(message) {
-    const snapshot = normalizeSnapshot(message);
+    let snapshot;
+    try {
+      snapshot = normalizeSnapshot(message);
+    } catch (err) {
+      console.warn("session: rejecting out-of-contract snapshot", err.message);
+      notify("onError", { code: "invalid-snapshot", message: err.message });
+      return false;
+    }
     lastSnapshot = snapshot;
     if (typeof message.running === "boolean") roomRunning = message.running;
     try {
@@ -434,6 +453,7 @@ export function createSession(sim, handlers = {}) {
   function restoreSnapshot(snapshot) {
     if (!snapshot) return false;
     try {
+      validateWorldState(snapshot);
       sim.fromSnapshot(snapshot);
       lastSnapshot = snapshot;
       notify("onSnapshot", snapshot);
@@ -602,15 +622,35 @@ export function createSession(sim, handlers = {}) {
     return "ws://localhost:8787/ws";
   }
 
+  /**
+   * Prepare the session for a new room (create/join). If a socket already
+   * exists (the browser session is currently in a room or reconnecting), the
+   * old connection is closed cleanly — sending `leave` so the relay removes
+   * the stale peer — before the new connection is opened. This keeps one
+   * browser session from holding two live peers on the relay after a
+   * create/join switch, and lets a session that already called `leave()`
+   * create/join again without a page reload.
+   */
+  function prepareForNewRoom() {
+    if (socket) {
+      try {
+        if (isConnected()) send({ type: "leave" });
+      } catch {
+        // socket may be mid-close; ignore
+      }
+      closeSocket("switch room");
+    }
+    manualClose = false;
+  }
+
   /** Create a room on the relay. */
   function create(options = {}, onCreated) {
-    if (manualClose) return false;
+    prepareForNewRoom();
     kind = "create";
     displayName = sanitizeName(options.name ?? "");
     const code = normalizeRoomCode(options.room ?? "");
     roomCode = isRoomCode(code) ? code : makeRoomCode();
     connectUrl = relayUrlFromOptions(options);
-    manualClose = false;
     openSocket(connectUrl);
     if (typeof onCreated === "function") {
       setTimeout(() => {
@@ -622,7 +662,7 @@ export function createSession(sim, handlers = {}) {
 
   /** Join an existing room by code or link. */
   function join(options = {}) {
-    if (manualClose) return false;
+    prepareForNewRoom();
     let code = normalizeRoomCode(options.code ?? "");
     let name = sanitizeName(options.name ?? "");
     if (options.link && !code) {
@@ -642,7 +682,6 @@ export function createSession(sim, handlers = {}) {
     roomCode = code;
     displayName = name || sanitizeName("");
     connectUrl = relayUrlFromOptions(options);
-    manualClose = false;
     openSocket(connectUrl);
     return true;
   }

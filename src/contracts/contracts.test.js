@@ -15,7 +15,7 @@ import {
   validateWorldState,
 } from "./worldState.js";
 import { DEFAULT_SKIN, isSkin, validateSkin } from "./skin.js";
-import { DEFAULTS, WORLD_VOLUME } from "./simulation.js";
+import { DEFAULTS, WORLD_VOLUME, MAX_GRID_SIZE, MAX_WORLD_CELLS } from "./simulation.js";
 
 test("contracts: barrel exports the shared API surface", async () => {
   // The index barrel is what phase-2 tasks will import from.
@@ -72,6 +72,30 @@ test("worldState: schema and validators accept compact world snapshots", () => {
   assert.throws(() => validateWorldState({ generation: 0, size: 0, cells: [] }), /size/);
   assert.throws(() => validateWorldState({ generation: 0, size: 16, cells: [[0, 0, 0, 2]] }), /alive/);
   assert.throws(() => validateWorldState({ generation: 0, size: 16, cells: [[0, 0]] }), /each cell entry/);
+});
+
+test("worldState: oversized snapshots are rejected (grid + cell caps)", () => {
+  // size beyond MAX_GRID_SIZE must be rejected.
+  assert.throws(
+    () => validateWorldState({ generation: 0, size: MAX_GRID_SIZE + 1, cells: [] }),
+    /exceeds the cap/,
+  );
+  // cell list beyond MAX_WORLD_CELLS must be rejected.
+  const tooMany = [];
+  for (let i = 0; i < MAX_WORLD_CELLS + 1; i++) {
+    tooMany.push([i % MAX_GRID_SIZE, (i * 7) % MAX_GRID_SIZE, (i * 13) % MAX_GRID_SIZE, 1]);
+  }
+  assert.throws(() => validateWorldState({ generation: 0, size: MAX_GRID_SIZE, cells: tooMany }), /cell count|exceeds the cap/);
+  // A lattice at the cap with an empty cell list is still valid.
+  assert.equal(isWorldState({ generation: 0, size: MAX_GRID_SIZE, cells: [] }), true);
+});
+
+test("worldState: coordinates must stay inside the lattice bounds", () => {
+  // size 16 -> half == 8 -> valid coords in [-8, 7].
+  validateWorldState({ generation: 0, size: 16, cells: [[-8, 7, 0, 1], [0, 0, 0, 0]] });
+  assert.throws(() => validateWorldState({ generation: 0, size: 16, cells: [[8, 0, 0, 1]] }), /coordinate 0/);
+  assert.throws(() => validateWorldState({ generation: 0, size: 16, cells: [[0, -9, 0, 1]] }), /coordinate 1/);
+  assert.throws(() => validateWorldState({ generation: 0, size: 16, cells: [[0, 0, 8, 1]] }), /coordinate 2/);
 });
 
 test("skin: default skin is valid and validator rejects malformed themes", () => {

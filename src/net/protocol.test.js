@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 
 import {
   MAX_GRID_SIZE,
+  MAX_WORLD_CELLS,
   MAX_TICK_RATE,
   ROOM_CODE_LENGTH,
   ROOM_CODE_RE,
@@ -183,6 +184,102 @@ test("session: snapshot messages restore the simulation (joiner path)", () => {
   session.__handleMessage?.({ type: "snapshot", ...snap });
   assert.equal(sim.generation, 7);
   assert.equal(sim.population, 2);
+});
+
+test("session: rejects out-of-contract snapshots (oversized size / cells / coords)", () => {
+  const { sim, session } = makeSession();
+  const errors = [];
+  const session2 = makeSession({ onError: (e) => errors.push(e) }).session;
+  // Oversized size must be rejected and the existing simulation left intact.
+  session2.__handleMessage?.({ type: "snapshot", generation: 0, size: 10_000, cells: [] });
+  assert.equal(sim.size, 16, "rejected snapshot must not resize the sim");
+  assert.ok(errors.length >= 1, "an onError should be surfaced for an out-of-contract snapshot");
+  const first = errors[0];
+  assert.equal(first.code, "invalid-snapshot");
+  assert.match(first.message, /exceeds the cap/);
+});
+
+test("session: rejects oversized handoff snapshot (host-promotion path)", () => {
+  const { sim, session } = makeSession();
+  session.__handleMessage?.({
+    type: "handoff",
+    newHostId: "p2",
+    worldSize: 16,
+    snapshot: { generation: 0, size: 10_000, cells: [] },
+  });
+  assert.equal(sim.size, 16, "rejected handoff must not grow the sim");
+  assert.equal(sim.generation, 0);
+});
+
+test("protocol: MAX_GRID_SIZE/MAX_WORLD_CELLS are shared and match the contracts layer", async () => {
+  const contracts = await import("../contracts/simulation.js");
+  assert.equal(MAX_GRID_SIZE, contracts.MAX_GRID_SIZE);
+  assert.equal(MAX_WORLD_CELLS, contracts.MAX_WORLD_CELLS);
+  assert.equal(MAX_WORLD_CELLS, MAX_GRID_SIZE ** 3);
+});
+
+test("session: create/join after leave is allowed and closes the old socket", () => {
+  const realWS = globalThis.WebSocket;
+  const createdSockets = [];
+  class FakeWS {
+    static OPEN = 1;
+    static CONNECTING = 0;
+    static CLOSED = 3;
+    constructor(url) {
+      this.url = url;
+      this.readyState = FakeWS.CONNECTING;
+      this.onopen = null;
+      this.onmessage = null;
+      this.onclose = null;
+      this.onerror = null;
+      this.sent = [];
+      createdSockets.push(this);
+    }
+    send(data) {
+      this.sent.push(JSON.parse(data));
+    }
+    close() {
+      this.readyState = FakeWS.CLOSED;
+    }
+  }
+  globalThis.WebSocket = FakeWS;
+  try {
+    const { sim, session } = makeSession({});
+    // First create: opens socket #1 (CONNECTING).
+    session.create({ name: "Alice" });
+    const first = createdSockets[0];
+    assert.equal(createdSockets.length, 1);
+    first.readyState = FakeWS.OPEN; // pretend the connection is live
+
+    // Create again while connected: old socket gets `leave`, closes, and a
+    // fresh socket opens (state CONNECTING again).
+    session.create({ name: "Alice" });
+    assert.ok(first.sent.some((m) => m.type === "leave"), "leave should be sent when switching rooms");
+    assert.equal(first.readyState, FakeWS.CLOSED, "old socket should be closed on room switch");
+    assert.equal(session.getState(), "connecting");
+    assert.equal(createdSockets.length, 2);
+
+    // Leave, then create again from the same session (no page reload).
+    const second = createdSockets[1];
+    second.readyState = FakeWS.OPEN;
+    session.leave();
+    assert.equal(session.getState(), "left");
+    assert.ok(second.sent.some((m) => m.type === "leave"), "leave() sends leave on the current socket");
+    const ok = session.create({ name: "Alice" });
+    assert.equal(ok, true, "create after leave must be allowed");
+    assert.equal(session.getState(), "connecting");
+    assert.equal(createdSockets.length, 3, "a fresh socket is opened for the new room");
+
+    // Joining another room while connected also switches sockets cleanly.
+    const third = createdSockets[2];
+    third.readyState = FakeWS.OPEN;
+    session.join({ code: "ZXCVB" });
+    assert.equal(session.getState(), "connecting");
+    assert.equal(createdSockets.length, 4, "join after connected also opens a fresh socket");
+    assert.ok(third.sent.some((m) => m.type === "leave"), "join while connected also leaves cleanly");
+  } finally {
+    globalThis.WebSocket = realWS;
+  }
 });
 
 test("session: host handoff restores the relay's world and promotes the peer", () => {
