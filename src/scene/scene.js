@@ -39,6 +39,10 @@ const GRID_COLOR_2 = new THREE.Color();
 const PALETTE_END = new THREE.Color();
 const CELL_COLOR = new THREE.Color();
 const DYING_COLOR = new THREE.Color();
+const PEER_COLOR = new THREE.Color();
+
+/** Remote presence marker geometry (a small cone pointing up at the cell). */
+const PEER_MARKER_GEOMETRY = new THREE.ConeGeometry(0.16, 0.34, 8);
 
 /** Strength of a sine wave of period `period` at time t (seconds), 0..1. */
 function wave(t, period) {
@@ -511,6 +515,116 @@ export function createScene(container, options) {
 
   window.addEventListener("resize", onResize);
 
+  // ---- Remote presence markers (multiplayer cursor/label layer) --------------
+  const presenceGroup = new THREE.Group();
+  scene.add(presenceGroup);
+
+  /** Map of peerId -> { mesh, name, color } rendered markers. */
+  const presenceMarkers = new Map();
+
+  /** Draw a rounded-rectangle path for the name label background. */
+  function roundRectPath(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  /**
+   * Build the marker + floating name label for one remote peer.
+   * @param {string} peerId
+   * @param {string} name
+   * @param {string} color Hex color string.
+   */
+  function addPresenceMarker(peerId, name, color) {
+    if (presenceMarkers.has(peerId)) {
+      presenceMarkers.get(peerId).name = name;
+      return;
+    }
+    PEER_COLOR.set(color || "#39ff14");
+    const material = new THREE.MeshBasicMaterial({ color: PEER_COLOR.getHex() });
+    const mesh = new THREE.Mesh(PEER_MARKER_GEOMETRY, material);
+    mesh.rotation.x = Math.PI / 2; // cone points up (+Y)
+    mesh.raycast = () => {};
+    mesh.position.set(0, 7, 0); // float above the lattice until first update
+    presenceGroup.add(mesh);
+
+    // Floating name label.
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 64;
+    const ctx = canvas.getContext("2d");
+    ctx.font = "bold 30px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "rgba(8,12,24,0.72)";
+    roundRectPath(ctx, 16, 4, 224, 56, 14);
+    ctx.fill();
+    ctx.fillStyle = color || "#39ff14";
+    ctx.fillText(name, 128, 32);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    const spriteMaterial = new THREE.SpriteMaterial({
+      map: texture,
+      depthWrite: false,
+      transparent: true,
+    });
+    const sprite = new THREE.Sprite(spriteMaterial);
+    sprite.scale.set(2.6, 0.65, 1);
+    sprite.position.set(0, 1.2, 0);
+    mesh.add(sprite);
+
+    presenceMarkers.set(peerId, { mesh, name, color });
+  }
+
+  /** Update a remote peer's marker to a lattice cell (world-space position). */
+  function updatePresenceMarker(peerId, x, y, z) {
+    const entry = presenceMarkers.get(peerId);
+    if (!entry) return;
+    entry.mesh.position.set(x, y + 1.6, z);
+    entry.mesh.visible = true;
+  }
+
+  /** Remove a remote peer's marker. */
+  function removePresenceMarker(peerId) {
+    const entry = presenceMarkers.get(peerId);
+    if (!entry) return;
+    presenceGroup.remove(entry.mesh);
+    // NOTE: PEER_MARKER_GEOMETRY is a shared geometry; do NOT dispose it here
+    // (other markers still use it). Dispose per-marker material + label only.
+    entry.mesh.material.dispose();
+    for (const child of [...entry.mesh.children]) {
+      if (child.material) {
+        if (child.material.map) child.material.map.dispose();
+        child.material.dispose();
+      }
+      entry.mesh.remove(child);
+    }
+    presenceMarkers.delete(peerId);
+  }
+
+  /** Replace the whole presence layer (e.g. after roster refresh). */
+  function setPresence(peers) {
+    const seen = new Set();
+    for (const peer of peers) {
+      if (!peer || peer.peerId === peer.me) continue;
+      seen.add(peer.peerId);
+      addPresenceMarker(peer.peerId, peer.name || peer.peerId, peer.color);
+    }
+    for (const key of [...presenceMarkers.keys()]) {
+      if (!seen.has(key)) removePresenceMarker(key);
+    }
+  }
+
+  /** Clear every presence marker (session end). */
+  function clearPresence() {
+    for (const key of [...presenceMarkers.keys()]) removePresenceMarker(key);
+  }
+
   /** Rebuild the live layer from the simulation's current cells (keeps ages). */
   function syncVoxels() {
     const snapshot = simulation.toSnapshot();
@@ -543,6 +657,7 @@ export function createScene(container, options) {
   /** Tear down the scene (used by HMR / tests). */
   function dispose() {
     window.removeEventListener("resize", onResize);
+    clearPresence();
     controls.dispose();
     disposeLiveLayer();
     disposeGhostLayer();
@@ -575,5 +690,9 @@ export function createScene(container, options) {
     applySkin,
     onResize,
     dispose,
+    setPresence,
+    updatePresenceMarker,
+    removePresenceMarker,
+    clearPresence,
   };
 }

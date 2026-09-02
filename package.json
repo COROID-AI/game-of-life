@@ -8,11 +8,13 @@
     "dev": "vite",
     "build": "vite build",
     "start": "vite preview --host 0.0.0.0",
+    "relay": "node server/relay.js",
     "test": "node --test",
     "test:watch": "node --test --watch"
   },
   "dependencies": {
-    "three": "^0.185.1"
+    "three": "^0.185.1",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "vite": "^8.2.2"

@@ -28,11 +28,57 @@ Day & Night B3678/S34678, Bays 3D B25/S45), save/load/delete them, and share
 them as a compact copy-paste code. Rule changes apply to the running lattice
 immediately, no restart needed.
 
-Tests (engine + contracts, no browser needed):
+Tests (engine + contracts + multiplayer, no browser needed):
 
 ```bash
-npm test        # node --test  (glider, blinker, block, initialize/tick, contracts)
+npm test        # node --test  (glider, blinker, block, initialize/tick,
+                # contracts, skins, rules, net/protocol, net/session,
+                # net/determinism, net/relay e2e)
 ```
+
+## Multiplayer (authoritative-host rooms)
+
+The scaffold ships a self-hosted multiplayer layer (`src/net/session.js` +
+`server/relay.js`) built on **native WebSocket** — no managed service, no
+external dependencies beyond the existing `ws` package (Node >= 20 also has a
+global `WebSocket` for the client path).
+
+Start the relay in one terminal:
+
+```bash
+npm run relay   # WebSocket relay on ws://localhost:8787/ws
+```
+
+Then open two browser windows on the same dev server:
+
+1. In window A click **Create room**. A shareable room code appears along with
+   a **Copy link** button.
+2. In window B click **Join** and type the code (or open the copied
+   `?room=CODE` link — it auto-joins).
+3. Both windows render the **same 3D lattice**: the host runs the deterministic
+   phase-1 simulation, ticks it at the room rate, and broadcasts full/delta
+   world snapshots. Joiners apply snapshots and never tick on their own.
+4. Any player can **✏ Seed mode** (click a voxel to place/remove it), **Pause**,
+   **Resume**, **Step**, **Clear**, switch **rule-sets**, or switch **skin** —
+   every request is validated by the host and broadcast to every client within
+   one tick cycle.
+5. Remote players appear as labeled cone markers in the scene, following their
+   cursor while they hover over the lattice.
+6. Close/kill the host window: the relay hands authority to the oldest
+   remaining client, which restores the latest cached snapshot (`fromSnapshot`),
+   resumes ticking, and the world continues without grid divergence.
+
+Design rules that keep the sync coherent:
+
+- **Host-authoritative determinism**: same seed + rule + tick count produce
+  identical world state (the engine is untouched), so every client renders
+  identical grids.
+- **Caps**: grid size is capped at `MAX_GRID_SIZE` (32), tick rate at
+  `MAX_TICK_RATE` (8/s, default 4), peers at `MAX_ROOM_CLIENTS` (8), and
+  messages are size/rate limited.
+- **Delta thresholds**: full snapshots are sent below `DELTA_THRESHOLD` live
+  cells; large lattices use sparse deltas so sync degrades (fewer bytes), not
+  diverges.
 
 ## Module layout
 
@@ -62,10 +108,20 @@ src/
     skins.test.js          Registry/panel tests (node --test)
   ui/
     skins-panel.js         HUD skin selector + localStorage persistence
+  net/
+    protocol.js            Pure wire protocol: room codes, actions, diffs
+    session.js             Multiplayer session (authoritative-host model)
+    protocol.test.js       Protocol/session headless tests
+    determinism.test.js    Determinism + no-divergence tests
+    relay.test.js          End-to-end relay tests (real WebSocket)
+  ui/
+    multiplayer-panel.js   HUD room bar: create/join, roster, seed/control
   engine/
     simulation.test.js     Engine + pattern tests (node --test)
   contracts/
     contracts.test.js      Schema/validator/tests
+server/
+  relay.js                 WebSocket relay (`npm run relay`) + room cache
 ```
 
 ## Simulation engine
@@ -142,5 +198,12 @@ the same runtime without reloading the page.
 - The simulation core must stay pure: **no DOM or three.js imports** in
   `src/engine/**` or `src/contracts/**`.
 - `src/main.js` and `src/scene/scene.js` are the only DOM/three.js glue.
+- `src/net/protocol.js` is the pure wire-protocol layer (no DOM/network
+  imports); `src/net/session.js` is browser-first but deliberately keeps all
+  protocol concerns in `protocol.js` so headless tests can drive it through a
+  fake socket. `server/relay.js` is a Node-only relay (uses `ws`).
 - Keep shared world constants in `src/contracts/simulation.js`; phase-2 tasks
   should consume them instead of redefining dimensions.
+- Multiplayer never forks or modifies the simulation core: the host owns
+  `sim.tick`, joiners only `fromSnapshot`, and every action is validated
+  through `src/net/protocol.js` before broadcast.
