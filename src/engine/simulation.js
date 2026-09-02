@@ -232,6 +232,29 @@ export function createSimulation(options = {}) {
     return world.cells;
   }
 
+  /**
+   * Resize the cubic lattice (grid-size presets). The world is rebuilt at the
+   * new size; coordinates inside the new bounds keep their alive/dead state,
+   * out-of-bounds cells are dropped. This never mutates the transition
+   * rule-set and stays a pure engine operation (no DOM/three.js).
+   * @param {number} newSize Positive integer edge length.
+   * @returns {Object} The resized simulation handle (same object).
+   */
+  function resize(newSize) {
+    const sizeArg = Number.isInteger(newSize) && newSize > 0 ? newSize : DEFAULTS.size;
+    const prev = world.cells;
+    world = { size: sizeArg, half: Math.floor(sizeArg / 2), cells: new Map() };
+    const half = Math.floor(sizeArg / 2);
+    for (const k of prev.keys()) {
+      const [x, y, z] = k.split(",").map(Number);
+      if (x >= -half && x < half && y >= -half && y < half && z >= -half && z < half) {
+        world.cells.set(k, 1);
+      }
+    }
+    generation = 0;
+    return world.cells;
+  }
+
   return {
     /** Current generation counter (incremented by each successful tick). */
     get generation() { return generation; },
@@ -246,6 +269,7 @@ export function createSimulation(options = {}) {
     tick,
     initialize,
     clear,
+    resize,
     toSnapshot,
     fromSnapshot,
   };

@@ -96,7 +96,10 @@ export function main(container, options = {}) {
   function setSkin(skinId) {
     if (disposed) return false;
     const applied = scene.applySkin(skinId);
-    if (applied) writeStoredSkinId(skinId);
+    if (applied) {
+      writeStoredSkinId(skinId);
+      panel.setActiveId(skinId);
+    }
     scene.render();
     return applied;
   }

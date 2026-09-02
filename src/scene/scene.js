@@ -694,5 +694,8 @@ export function createScene(container, options) {
     updatePresenceMarker,
     removePresenceMarker,
     clearPresence,
+    get activeSkinId() {
+      return activeSkin ? activeSkin.id : null;
+    },
   };
 }

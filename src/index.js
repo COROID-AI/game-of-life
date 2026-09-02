@@ -19,6 +19,11 @@ import { createRuleEditor } from "./ui/rules-editor.js";
 import { createSession, PEER_ROLE, SESSION_STATE } from "./net/session.js";
 import { peerColorFor, sanitizeName } from "./net/protocol.js";
 import { createMultiplayerPanel } from "./ui/multiplayer-panel.js";
+import { createMetrics, METRIC_EVENTS } from "./analytics/metrics.js";
+import { createQualityController } from "./quality/quality.js";
+import { createGridControl } from "./ui/grid-control.js";
+import { createOnboarding } from "./ui/onboarding.js";
+import { markTourDone } from "./ui/onboarding.js";
 
 const app = document.getElementById("app");
 if (!app) {
@@ -104,6 +109,61 @@ if (stepBtn) {
 setInterval(updateHud, 200);
 updateHud();
 
+// ---- Local metrics + quality + onboarding ------------------------------------
+// Lightweight local/anonymized instrumentation (no external service). The
+// reporter mirrors events to console.debug, a localStorage queue, and
+// `life3d:metric` CustomEvents; the HUD FPS/grid control lives in the
+// quality controller; the first-run tour hints anchor to HUD elements.
+const metrics = createMetrics({});
+window.__life3dMetrics = metrics;
+metrics.start();
+
+const quality = createQualityController({
+  sim: handle.simulation,
+  scene: handle.scene,
+  metrics,
+});
+window.__life3dQuality = quality;
+
+const gridPanel = createGridControl({ controller: quality });
+window.__life3dGridPanel = gridPanel;
+
+// Feed the FPS meter from the render loop without changing the loop itself.
+const sceneRender = handle.scene.render.bind(handle.scene);
+handle.scene.render = (now) => {
+  const result = sceneRender();
+  quality.tickFrameStats(now ?? performance.now());
+  return result;
+};
+
+// Track active (running-simulation) time for the session metric. The local
+// play loop is a setInterval owned by main.js; sample it here each second.
+window.setInterval(() => {
+  if (handle.isRunning()) metrics.addActiveTime(1000);
+  metrics.addActiveTime(0); // keep the reporter's wall-clock current
+}, 1000);
+
+// Session-end on page unload (pagehide covers desktop + mobile).
+window.addEventListener("pagehide", () => metrics.end());
+
+let onboarding = null;
+try {
+  onboarding = createOnboarding({ metrics });
+  window.__life3dOnboarding = onboarding;
+  const helpBtn = document.getElementById("help-btn");
+  if (helpBtn) {
+    helpBtn.addEventListener("click", () => {
+      if (onboarding && onboarding.start) {
+        markTourDone(); // allow re-showing the tour on demand
+        onboarding.start();
+      }
+    });
+  }
+  if (onboarding.start) onboarding.start();
+} catch (err) {
+  console.warn("onboarding unavailable:", err);
+}
+
 // ---- Multiplayer session bootstrap ------------------------------------------
 // Authoritative-host model: the room HOST ticks the deterministic simulation
 // and broadcasts snapshots; joiners apply them. Every mediated action is
@@ -187,6 +247,12 @@ const session = createSession(handle.simulation, {
     // (e.g. a rule picked before creating the room).
     if (info.role === PEER_ROLE.HOST) {
       session.setHostRule(handle.getActiveRule());
+    }
+    if (metrics) {
+      metrics.record(METRIC_EVENTS.MULTIPLAYER_JOIN, {
+        role: info.role === PEER_ROLE.HOST ? "host" : "joiner",
+        roomCode: session.getRoomCode?.() ?? info.roomCode ?? "",
+      });
     }
     window.dispatchEvent(new CustomEvent("life3d:joined", { detail: info }));
   },
@@ -274,10 +340,32 @@ handle.setSkin = (skinId) => {
     session.requestSkin(skinId);
     return true;
   }
-  return origSetSkin(skinId);
+  const applied = origSetSkin(skinId);
+  if (applied && metrics) {
+    const skin = handle.scene?.activeSkinId ?? skinId;
+    metrics.record(METRIC_EVENTS.SKIN_SWITCH, { skinId, skinLabel: skin });
+  }
+  return applied;
 };
 const origApplyRuleSet = rawHandleApplyRuleSet;
+const DEFAULT_RULE_ID = "conway-b3s23";
+function isDefaultRule(ruleSet) {
+  return (
+    ruleSet &&
+    ruleSet.id === DEFAULT_RULE_ID &&
+    Array.isArray(ruleSet.birth) &&
+    ruleSet.birth.length === 1 &&
+    ruleSet.birth[0] === 3 &&
+    Array.isArray(ruleSet.survive) &&
+    ruleSet.survive.length === 2 &&
+    ruleSet.survive.includes(2) &&
+    ruleSet.survive.includes(3)
+  );
+}
 handle.applyRuleSet = (ruleSet) => {
+  if (metrics && ruleSet && !isDefaultRule(ruleSet)) {
+    metrics.recordCustomRule(ruleSet);
+  }
   if (inRoomMode()) {
     session.setHostRule(ruleSet); // host uses it for the next tick
     session.requestRule(ruleSet);
@@ -322,6 +410,9 @@ handle.dispose = (() => {
   return () => {
     try { session.leave(); } catch { /* ignore */ }
     if (mpPanel && mpPanel.destroy) mpPanel.destroy();
+    if (gridPanel && gridPanel.destroy) gridPanel.destroy();
+    if (onboarding && onboarding.destroy) onboarding.destroy();
+    if (metrics) metrics.end();
     oldDispose();
   };
 })();

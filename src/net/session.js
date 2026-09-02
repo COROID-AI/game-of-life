@@ -152,7 +152,7 @@ export function createSession(sim, handlers = {}) {
     socket = ws;
     ws.onopen = () => {
       retryCount = 0;
-      if (kind === "create") send({ type: "createRoom", name: displayName });
+      if (kind === "create") send({ type: "createRoom", name: displayName, room: roomCode });
       else send({ type: "join", roomCode, name: displayName, worldSize: sim.size });
     };
     ws.onmessage = (event) => {
@@ -586,6 +586,22 @@ export function createSession(sim, handlers = {}) {
 
   // ---- Room lifecycle -------------------------------------------------------
 
+  function relayUrlFromOptions(options) {
+    if (options.relayUrl) return options.relayUrl;
+    if (typeof window !== "undefined") {
+      // Allow `?relay=ws://host:port/ws` so E2E can point the app at a
+      // relay running on a different port than the Vite server.
+      try {
+        const relay = new URLSearchParams(window.location.search).get("relay");
+        if (relay) return relay;
+      } catch {
+        // ignore malformed query
+      }
+      return `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws`;
+    }
+    return "ws://localhost:8787/ws";
+  }
+
   /** Create a room on the relay. */
   function create(options = {}, onCreated) {
     if (manualClose) return false;
@@ -593,11 +609,7 @@ export function createSession(sim, handlers = {}) {
     displayName = sanitizeName(options.name ?? "");
     const code = normalizeRoomCode(options.room ?? "");
     roomCode = isRoomCode(code) ? code : makeRoomCode();
-    connectUrl =
-      options.relayUrl ??
-      (typeof window !== "undefined"
-        ? `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws`
-        : "ws://localhost:8787/ws");
+    connectUrl = relayUrlFromOptions(options);
     manualClose = false;
     openSocket(connectUrl);
     if (typeof onCreated === "function") {
@@ -629,11 +641,7 @@ export function createSession(sim, handlers = {}) {
     kind = "join";
     roomCode = code;
     displayName = name || sanitizeName("");
-    connectUrl =
-      options.relayUrl ??
-      (typeof window !== "undefined"
-        ? `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws`
-        : "ws://localhost:8787/ws");
+    connectUrl = relayUrlFromOptions(options);
     manualClose = false;
     openSocket(connectUrl);
     return true;

@@ -10,13 +10,15 @@
     "start": "vite preview --host 0.0.0.0",
     "relay": "node server/relay.js",
     "test": "node --test",
-    "test:watch": "node --test --watch"
+    "test:watch": "node --test --watch",
+    "e2e": "node scripts/e2e-verify.js"
   },
   "dependencies": {
     "three": "^0.185.1",
     "ws": "^8.21.3"
   },
   "devDependencies": {
+    "playwright": "^1.62.1",
     "vite": "^8.2.2"
   },
   "engines": {

@@ -54,6 +54,7 @@ export function createMultiplayerPanel({ session, scene }) {
 
   const status = document.createElement("span");
   status.className = "mp-status";
+  status.id = MP_IDS.status;
   status.textContent = "offline";
 
   const roster = document.createElement("div");

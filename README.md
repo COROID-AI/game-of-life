@@ -28,13 +28,85 @@ Day & Night B3678/S34678, Bays 3D B25/S45), save/load/delete them, and share
 them as a compact copy-paste code. Rule changes apply to the running lattice
 immediately, no restart needed.
 
+New players see a short **first-run tour** (click **?** next to Step at any
+time to re-open it) that anchors tooltips to the camera hint bar, ⚙ Rules,
+the Theme selector, the multiplayer room bar, and the Grid control. Each step
+renders and dismisses (Next / Got it / Skip tour) and emits `hint:shown` /
+`hint:dismissed` usage events. The **Grid** dropdown switches lattice presets
+(Small 12³ / Default 16³ / Medium 24³ / Large 32³) and the **Quality** dropdown
+picks a detail level; an automatic quality guard lowers detail when the
+framerate dips below the interactive threshold (see "Performance" below).
+
 Tests (engine + contracts + multiplayer, no browser needed):
 
 ```bash
 npm test        # node --test  (glider, blinker, block, initialize/tick,
-                # contracts, skins, rules, net/protocol, net/session,
-                # net/determinism, net/relay e2e)
+                # contracts, skins, rules, metrics, quality, onboarding,
+                # net/protocol, net/session, net/determinism, net/relay e2e)
 ```
+
+## End-to-end browser verification
+
+`npm run e2e` boots a Vite dev server **and** the WebSocket relay, opens
+Chromium (Playwright), and walks the full delivery-goal scenario:
+
+- launch: canvas renders, generation auto-runs, no console errors;
+- simulate: Step / Pause / Resume;
+- custom rule: the editor toggles a birth count and the HUD badge shows the
+  applied rule (`B35/S23` in the default scenario), `custom-rule:explored`
+  fires;
+- skins: all registry skins apply with no console errors;
+- multiplayer: two windows create/join a room, the guest reaches `joined`,
+  the roster shows both peers, snapshots converge (generation > 0 on both),
+  and `multiplayer:join` metrics fire on host and guest;
+- onboarding: every tour step renders and dismisses;
+- fps: readings exist at the default preset and after applying the Large
+  (32³) preset.
+
+Run it with the relay available (the script self-hosts it):
+
+```bash
+npm install            # includes playwright + downloads its Chromium (first run)
+npm run e2e
+```
+
+The same scenario is manually verifiable in a real browser: `npm run dev`,
+`npm run relay`, open two windows and follow the README flow above. E2E runs
+so far cover Chromium; Firefox (via Playwright) follows the same script when a
+local Firefox binary is installed (`npx playwright install firefox`).
+
+## Goal metrics (local, anonymized)
+
+The delivery goals — **+20% active play-time** and **≥5% of sessions explore a
+custom rule-set** — are measurable through a deliberately **local, anonymized**
+event sink. There is **no external analytics service**: events are written to
+`console.debug`, appended to a bounded `localStorage` queue
+(`game-of-life-3d:metrics`), and dispatched as `life3d:metric` CustomEvents.
+Open DevTools → Console, or run `localStorage.getItem("game-of-life-3d:metrics")`
+from the console to dump the sink. The live reporter is exposed as
+`window.__life3dMetrics` (`getSummary()`, `getEvents()`, `flush()`).
+
+| Event | Fields | Meaning |
+| --- | --- | --- |
+| `session:start` | `sessionId` | New session opened. |
+| `session:end` | `durationMs`, `activeMs` | Session closed; active time is the sum of seconds the simulation ran (`handle.isRunning()`). |
+| `custom-rule:explored` | `ruleId`, `ruleName` | Flag: a non-default rule-set became active (once per rule per session). |
+| `skin:switch` | `skinId`, `skinLabel` | A skin change. |
+| `multiplayer:join` | `role`, `roomCode` | Join/create a room. |
+| `grid:preset` | `size`, `id` | Grid-size preset applied. |
+| `hint:shown` / `hint:dismissed` | `step` | Onboarding tour step shown/dismissed. |
+| `quality:guard` | `level`, `levelId`, `reason`, `fps` | Automatic (or manual) quality degradation. |
+
+Goal formulas (per session, using the exported sink):
+
+- **Active play-time %** = `Σ activeMs` ÷ `Σ durationMs` across `session:end`
+  events. Target: the "before" baseline plus ≥20% more _active_ play-time.
+- **Custom-rule session %** = sessions with ≥1 `custom-rule:explored` event ÷
+  sessions with ≥1 `session:start` event. Target: ≥5%.
+
+No personal data is stored: only counts, durations, and ids already visible in
+the app (skin ids, room codes, rule ids). Everything stays on the user's
+machine.
 
 ## Multiplayer (authoritative-host rooms)
 
@@ -116,6 +188,12 @@ src/
     relay.test.js          End-to-end relay tests (real WebSocket)
   ui/
     multiplayer-panel.js   HUD room bar: create/join, roster, seed/control
+    onboarding.js          First-run tour tooltips + persistence (+ test)
+    grid-control.js        HUD Grid preset + Quality + FPS readout
+  analytics/
+    metrics.js             Local/anonymized usage events (+ test)
+  quality/
+    quality.js             Grid presets, FPS meter, quality guards (+ test)
   engine/
     simulation.test.js     Engine + pattern tests (node --test)
   contracts/
@@ -134,6 +212,9 @@ server/
 - `sim.tick(ruleSet?)` — advance one generation, returns new population
 - `sim.initialize(seedDensity?)` — re-seed randomly
 - `sim.clear()` — empty lattice
+- `sim.resize(newSize)` — rebuild the lattice at a new cubic size; cells
+  inside the new bounds keep their state, out-of-bounds cells are dropped
+  (grid-size presets use this; the transition rule-set is untouched)
 - `sim.toSnapshot()` / `sim.fromSnapshot(snapshot)` — persistence / multiplayer sync
 - `sim.generation`, `sim.size`, `sim.population`
 
@@ -185,6 +266,45 @@ Dying/fading cells are drawn as a short-lived "ghost" layer in each skin's
 `palette.young → mid → old` age tint — both are cosmetic layers on top of the
 pure engine, so they cannot alter simulation state.
 
+## Performance, presets and quality guards
+
+Live cells are rendered with **one instanced draw call per skin**
+(`THREE.InstancedMesh`), so the default 16³ lattice stays interactive across
+all three skins. The HUD **Grid** dropdown adds size presets
+(Small 12³ / Default 16³ / Medium 24³ / Large 32³); the **Quality** dropdown
+picks a detail level (High / Medium / Low). An automatic quality guard in
+`src/quality/quality.js` samples the render loop every second and, when the
+framerate drops below the interactive threshold (`INTERACTIVE_FPS`, 45),
+steps down one level (pixel-ratio cap → ghost-layer toggles → particle
+budget) and emits `quality:guard`. Grid changes go through the pure engine
+API (`sim.resize`), so the deterministic tick contract is unchanged.
+
+Known performance caps (single-player and multiplayer):
+
+- Grid size is capped at `MAX_GRID_SIZE` (**32**) — the 32³ preset is the
+  largest lattice; 24³ is the recommended "playable large" preset on
+  integrated GPUs.
+- In software rendering (e.g. SwiftShader headless environments) the guard
+  immediately drops to Low; on real GPUs the default preset runs at 60 FPS
+  and Large stays playable via instancing plus the Low-quality guard.
+- Multiplayer adds relay + snapshot cost: the host caps tick rate at
+  `MAX_TICK_RATE` (8/s, default 4) and uses sparse deltas above
+  `DELTA_THRESHOLD` live cells so sync degrades gracefully instead of
+  diverging.
+- FPS readout lives in the HUD (`#fps-stat`) and is exposed via
+  `window.__life3dQuality.getFps()` / `getLastGuard()`.
+
+## Onboarding
+
+On first visit, a dismissible tour anchors tooltips to the camera hint bar,
+**⚙ Rules**, the **Theme** selector, the multiplayer room bar, and the **Grid**
+control. Use **Next** / **Back** to walk the steps, **Got it** to finish, or
+**Skip tour** to dismiss; the completion state persists in
+`localStorage["game-of-life-3d:onboarding-v1"]`. The **?** button next to
+Step re-opens the tour on demand. Each step emits `hint:shown` /
+`hint:dismissed` usage events (`step` field) so onboarding coverage is
+measurable.
+
 ## Backward compatibility
 
 `glider-test.html` still works unchanged: the demo exposes the classic pure
@@ -207,3 +327,10 @@ the same runtime without reloading the page.
 - Multiplayer never forks or modifies the simulation core: the host owns
   `sim.tick`, joiners only `fromSnapshot`, and every action is validated
   through `src/net/protocol.js` before broadcast.
+- The metrics reporter stays local/anonymized: it never performs a network
+  request and stores only bounded, anonymous counts in
+  `localStorage["game-of-life-3d:metrics"]` (see "Goal metrics").
+- Browser verification hooks: `window.__life3d` (simulation + scene handle),
+  `window.__life3dSession`, `window.__life3dMetrics`,
+  `window.__life3dQuality`, `window.__life3dGridPanel`, and
+  `window.__life3dOnboarding`.

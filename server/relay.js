@@ -37,6 +37,7 @@ import {
   MAX_TICK_RATE,
   ACTION_RATE_LIMIT,
   normalizeRoomCode,
+  isRoomCode,
   makeRoomCode,
   sanitizeName,
   validateAction,
@@ -100,8 +101,10 @@ function pickNextHost(room) {
   return candidates[0] ?? null;
 }
 
-function createRoom(hostClient, name) {
-  let code = makeRoomCode();
+function createRoom(hostClient, name, requestedCode) {
+  let code = requestedCode && isRoomCode(normalizeRoomCode(requestedCode))
+    ? normalizeRoomCode(requestedCode)
+    : makeRoomCode();
   let guard = 0;
   while (rooms.has(code) && guard < 50) {
     code = makeRoomCode();
@@ -361,7 +364,7 @@ wss.on("connection", (socket) => {
     }
     switch (message?.type) {
       case "createRoom":
-        createRoom(client, message.name ?? "");
+        createRoom(client, message.name ?? "", message.room ?? "");
         send(socket, {
           type: "joined",
           peerId: client.id,

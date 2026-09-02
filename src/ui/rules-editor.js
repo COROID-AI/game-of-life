@@ -300,8 +300,9 @@ export function createRuleEditor({
   }
 
   function updateBadge(rule) {
-    activeBadge.textContent = rule?.name ?? ruleStr.textContent;
-    activeBadge.title = `Active rule: ${rule?.name ?? ""} (${toRuleString(rule ?? active)})`;
+    const ruleStr = toRuleString(rule ?? active);
+    activeBadge.textContent = `${rule?.name ?? "Custom"} · ${ruleStr}`;
+    activeBadge.title = `Active rule: ${rule?.name ?? ""} (${ruleStr})`;
   }
 
   function toggleCount(group, n) {
