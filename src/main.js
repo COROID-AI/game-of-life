@@ -1,12 +1,13 @@
 /**
  * Browser bootstrap for the 3D Game of Life scaffold.
  *
- * Wires the shared simulation core, contracts, skin registry and HUD selector
- * to the three.js scene:
+ * Wires the shared simulation core, contracts, rule-set engine, skin registry
+ * and HUD selector to the three.js scene:
  *   1. Restore the previously selected skin from localStorage (or default).
  *   2. Create a seeded lattice (20% density by default).
  *   3. Mount the 3D scene into a container element.
- *   4. Tick the simulation at SPEED ticks/sec and refresh the voxels.
+ *   4. Tick the simulation at SPEED ticks/sec using the active rule-set
+ *      (B/S birth/survival counts) and refresh the voxels.
  *   5. Render continuously with requestAnimationFrame so dying fades, glow
  *      pulses and orbit damping animate smoothly; skin switches rebuild the
  *      scene's visual layer without touching the simulation state.
@@ -16,7 +17,7 @@
  */
 
 import { createSimulation } from "./engine/simulation.js";
-import { DEFAULTS } from "./contracts/index.js";
+import { DEFAULTS, DEFAULT_RULE_SET } from "./contracts/index.js";
 import { createScene } from "./scene/scene.js";
 import { SKINS, DEFAULT_SKIN_ID } from "./skins/skins.js";
 import {
@@ -28,15 +29,17 @@ import {
 /**
  * Boot the demo.
  * @param {HTMLElement} container Target element for the canvas.
- * @param {Object} [options] Overrides `{ size?, seedDensity?, speed?, skin? }`.
+ * @param {Object} [options] Overrides `{ size?, seedDensity?, speed?, skin?, ruleSet? }`.
  * @returns {Object} `{ simulation, scene, start, stop, step, reset, setSkin,
- *   dispose, isRunning, activeSkinId }`
+ *   dispose, isRunning, activeSkinId, applyRuleSet, getActiveRule }`
  */
 export function main(container, options = {}) {
   const size = options.size ?? DEFAULTS.SIZE;
   const seedDensity = options.seedDensity ?? DEFAULTS.SEED_DENSITY;
   const speed = options.speed ?? DEFAULTS.SPEED;
-  const requestedSkinId = (options.skin && options.skin.id) || readStoredSkinId() || DEFAULT_SKIN_ID;
+  const requestedSkinId =
+    (options.skin && options.skin.id) || readStoredSkinId() || DEFAULT_SKIN_ID;
+  let activeRule = options.ruleSet ?? DEFAULT_RULE_SET;
 
   let simulation = createSimulation({ size, seedDensity });
   let scene = createScene(container, { simulation, skinId: requestedSkinId });
@@ -51,10 +54,26 @@ export function main(container, options = {}) {
   /** Advance one generation and refresh the voxel lattice. */
   function step() {
     if (disposed) return;
-    simulation.tick();
+    simulation.tick(activeRule);
     scene.syncVoxels();
     scene.render();
     return simulation.generation;
+  }
+
+  /**
+   * Swap the rule-set the running simulation uses. Applies from the very next
+   * tick — no restart or page reload needed.
+   * @returns {Object} The now-active rule-set.
+   */
+  function applyRuleSet(ruleSet) {
+    if (disposed) return activeRule;
+    activeRule = ruleSet ?? DEFAULT_RULE_SET;
+    return activeRule;
+  }
+
+  /** The rule-set currently applied to live ticks. */
+  function getActiveRule() {
+    return activeRule;
   }
 
   /** Begin/continue automatic stepping at the configured speed. */
@@ -132,5 +151,7 @@ export function main(container, options = {}) {
     get activeSkinId() {
       return panel.getActiveId();
     },
+    applyRuleSet,
+    getActiveRule,
   };
 }
