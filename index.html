@@ -88,6 +88,270 @@
       #hud button {
         font-size: 13px;
       }
+      /* ---- Rule editor panel (rules-editor.js) ---------------------------- */
+      .re-hud {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-left: 4px;
+      }
+      .re-open {
+        background: #1a3a6a !important;
+        border-color: #3b6bd0 !important;
+        color: #dcebff !important;
+        font-weight: 600;
+      }
+      .re-active {
+        color: #9fb6e8;
+        font-size: 12px;
+        max-width: 220px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .re-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 40;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(4, 6, 14, 0.65);
+        backdrop-filter: blur(3px);
+      }
+      .re-modal[hidden] {
+        display: none;
+      }
+      .re-panel {
+        width: min(720px, calc(100vw - 32px));
+        max-height: 86vh;
+        overflow-y: auto;
+        background: #0d1428;
+        border: 1px solid rgba(120, 140, 200, 0.35);
+        border-radius: 16px;
+        padding: 18px 20px 14px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+        color: #dfe7f5;
+      }
+      .re-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 10px;
+      }
+      .re-title {
+        font-size: 17px;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+      }
+      .re-close {
+        background: transparent;
+        border: 0;
+        color: #8fa3cc;
+        font-size: 22px;
+        line-height: 1;
+        cursor: pointer;
+      }
+      .re-name {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid #2b4173;
+        background: #0a1122;
+        color: #e8f0ff;
+        font: inherit;
+        margin-bottom: 8px;
+      }
+      .re-preset-select,
+      .re-import-input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 7px 10px;
+        border-radius: 8px;
+        border: 1px solid #2b4173;
+        background: #0a1122;
+        color: #e8f0ff;
+        font: inherit;
+        margin-bottom: 6px;
+      }
+      .re-rule-str {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 15px;
+        color: #7fe0ff;
+        background: #0a1122;
+        border: 1px solid #22406f;
+        border-radius: 8px;
+        padding: 6px 10px;
+        margin: 6px 0 10px;
+        text-align: center;
+      }
+      .re-counts {
+        margin-top: 6px;
+      }
+      .re-legend {
+        font-size: 12px;
+        color: #8fa3cc;
+        margin: 8px 0 5px;
+        letter-spacing: 0.3px;
+      }
+      .re-grid {
+        display: grid;
+        grid-template-columns: repeat(13, 1fr);
+        gap: 5px;
+      }
+      .re-count {
+        background: #16233f;
+        border: 1px solid #2b4173;
+        color: #9fb6e8;
+        border-radius: 7px;
+        padding: 6px 0;
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+        transition: background 0.12s, border-color 0.12s, color 0.12s;
+      }
+      .re-count:hover {
+        border-color: #4a6bc0;
+      }
+      .re-count.on {
+        background: #2c6b4f;
+        border-color: #3ddc97;
+        color: #c9ffe9;
+        font-weight: 700;
+      }
+      .re-count-bottom {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 6px;
+      }
+      .re-count-num {
+        width: 76px;
+        padding: 5px 8px;
+        border-radius: 7px;
+        border: 1px solid #2b4173;
+        background: #0a1122;
+        color: #e8f0ff;
+        font: inherit;
+        font-size: 12px;
+      }
+      .re-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .re-btn {
+        padding: 7px 13px;
+        border-radius: 8px;
+        border: 1px solid #2b4173;
+        background: #14233f;
+        color: #cfddff;
+        font: inherit;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .re-btn:hover {
+        background: #1c2f55;
+        border-color: #4a6bc0;
+      }
+      .re-btn.primary {
+        background: #1a3a6a;
+        border-color: #3b6bd0;
+        font-weight: 600;
+      }
+      .re-import {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        margin-top: 8px;
+      }
+      .re-import[hidden] {
+        display: none;
+      }
+      .re-import-input {
+        flex: 1;
+        margin-bottom: 0;
+      }
+      .re-saved-row {
+        margin-top: 14px;
+        border-top: 1px solid #1c2d52;
+        padding-top: 8px;
+      }
+      .re-saved-title {
+        font-size: 12px;
+        color: #8fa3cc;
+        margin-bottom: 5px;
+        letter-spacing: 0.4px;
+      }
+      .re-saved-list {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+      .re-saved {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .re-saved-apply {
+        flex: 1;
+        text-align: left;
+        padding: 6px 9px;
+        border-radius: 7px;
+        border: 1px solid #2b4173;
+        background: #0a1122;
+        color: #cfddff;
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .re-saved-apply:hover {
+        border-color: #4a6bc0;
+      }
+      .re-saved-share,
+      .re-saved-del {
+        padding: 5px 9px;
+        border-radius: 6px;
+        border: 1px solid #2b4173;
+        background: #14233f;
+        color: #cfddff;
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .re-saved-del {
+        color: #ff9f9f;
+      }
+      .re-empty {
+        color: #5e6f94;
+        font-size: 12px;
+      }
+      .re-toast {
+        position: fixed;
+        bottom: 64px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 60;
+        background: #10203f;
+        border: 1px solid #3b6bd0;
+        color: #e8f0ff;
+        padding: 8px 16px;
+        border-radius: 999px;
+        font-size: 13px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+      }
+      #hud .re-count,
+      #hud .re-btn,
+      #hud .re-saved-apply,
+      #hud .re-saved-share,
+      #hud .re-saved-del {
+        font-size: 12px;
+      }
     </style>
   </head>
   <body>
@@ -100,7 +364,7 @@
       <span class="stat">Population <b id="population">0</b></span>
     </div>
 
-    <div id="hint">Drag to orbit · scroll to zoom · the lattice evolves under B3/S23 in 3D</div>
+    <div id="hint">Drag to orbit · scroll to zoom · open ⚙ Rules to author, save &amp; share rule-sets (B/S notation, 26-neighbour 3D)</div>
 
     <script type="module" src="/src/index.js"></script>
   </body>

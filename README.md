@@ -19,7 +19,12 @@ npm start       # preview the production build → http://localhost:4173
 Open the dev server URL in a browser. You should see a dark 3D scene with an
 orbit camera, a drifting grid floor, and a seeded voxel lattice that evolves
 under Conway B3/S23 extended to the 26-neighbour 3D Moore neighbourhood. Drag
-to orbit, scroll to zoom. The HUD shows the current generation and population.
+to orbit, scroll to zoom. The HUD shows the current generation and population
+and a prominent **⚙ Rules** button that opens the rule editor — create custom
+rule-sets, swap between presets (Conway B3/S23, HighLife B36/S23, Seeds B2/S,
+Day & Night B3678/S34678, Bays 3D B25/S45), save/load/delete them, and share
+them as a compact copy-paste code. Rule changes apply to the running lattice
+immediately, no restart needed.
 
 Tests (engine + contracts, no browser needed):
 
@@ -37,6 +42,11 @@ src/
   engine/
     simulation.js          Pure 3D state engine (no DOM / three.js imports)
     patterns.js            Named patterns (glider, blinker, block) + helpers
+    rules.js               Rule-set engine: B/S parsing, presets, share codes
+    rules.test.js          Rule-set engine tests
+  ui/
+    rules-editor.js        Rule editor panel (HUD entry point, presets,
+                           custom editor, saved rules, share/import)
   contracts/
     index.js               Barrel exports for later tasks
     simulation.js          Shared world constants (SIZE, SEED_DENSITY, SPEED)
@@ -72,7 +82,12 @@ the neighbourhood is the full 26-cell Moore set in 3D.
 rule-set object (contracts/ruleSet.js) may also set `plane`/`planeOffset` to
 constrain evolution to a classic 2D plane inside the 3D lattice (8 in-plane
 neighbours) — this is how the original 2D demo behaviour is preserved and how
-`window.gameOfLifeStep` implements glider-test.html.
+`window.gameOfLifeStep` implements glider-test.html. `src/engine/rules.js`
+owns the pure rule concerns: the 26-neighbour Moore set, five built-in
+presets, B/S notation ("B3/S23", "B36/S23", "B2/S") extended with A..Q for
+counts 10..26, and compact share codes (`life3d:rule:…`) that round-trip a
+whole named rule-set. The scene bootstrap (`main.js`) passes the active
+rule-set to every `tick`, so swapping rule-sets changes behaviour at runtime.
 
 ## Contracts for later tasks
 

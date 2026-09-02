@@ -8,6 +8,13 @@
 
 import { main } from "./main.js";
 import { createSimulation } from "./engine/simulation.js";
+import {
+  PRESET_RULE_SETS,
+  getPreset,
+  encodeRuleShare,
+  decodeRuleShare,
+} from "./engine/rules.js";
+import { createRuleEditor } from "./ui/rules-editor.js";
 
 const app = document.getElementById("app");
 if (!app) {
@@ -16,6 +23,24 @@ if (!app) {
 
 const handle = main(app, { size: 16, seedDensity: 0.2, speed: 4 });
 window.__life3d = handle;
+
+// ---- Custom rule editor (swap rules live, save/load/share) ----------------
+let editor = null;
+try {
+  editor = createRuleEditor({
+    presets: PRESET_RULE_SETS,
+    initial: handle.getActiveRule(),
+    onApply: (ruleSet) => handle.applyRuleSet(ruleSet),
+    shareEncode: encodeRuleShare,
+    shareDecode: decodeRuleShare,
+  });
+  window.__life3d.editor = editor;
+} catch (err) {
+  console.error("Could not start the rule editor:", err);
+}
+
+// Preserve a couple of engine-level conveniences on the window handle.
+window.getPresetRule = getPreset;
 
 /**
  * Compat hook for glider-test.html: pure, non-mutating classic 2D Conway.
@@ -55,7 +80,7 @@ const popEl = document.getElementById("population");
 function updateHud() {
   if (genEl) genEl.textContent = String(handle.simulation.generation);
   if (popEl) popEl.textContent = String(handle.simulation.population);
-  if (playPauseBtn) playPauseBtn.textContent = handle.simulation.running ? "Pause" : "Play";
+  if (playPauseBtn) playPauseBtn.textContent = handle.isRunning() ? "Pause" : "Play";
 }
 
 if (playPauseBtn) {
