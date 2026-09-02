@@ -3,18 +3,105 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Game of Life</title>
+    <title>Game of Life 3D</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%230a0e1a'/%3E%3Crect x='2' y='2' width='4' height='4' rx='1' fill='%2339ff14'/%3E%3Crect x='8' y='8' width='4' height='4' rx='1' fill='%2339ff14'/%3E%3Crect x='2' y='8' width='4' height='4' rx='1' fill='%2327b3ff'/%3E%3C/svg%3E"
+    />
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #0a0e1a;
+        color: #dfe7f5;
+        overflow: hidden;
+      }
+      #app {
+        position: fixed;
+        inset: 0;
+      }
+      canvas {
+        display: block;
+        touch-action: none;
+      }
+      #hud {
+        position: fixed;
+        top: 14px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 10;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        background: rgba(10, 14, 26, 0.78);
+        border: 1px solid rgba(120, 140, 200, 0.25);
+        border-radius: 12px;
+        padding: 8px 14px;
+        backdrop-filter: blur(6px);
+        font-size: 13px;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+      }
+      #hud button {
+        background: #14233f;
+        color: #cfddff;
+        border: 1px solid #2b4173;
+        border-radius: 8px;
+        padding: 6px 12px;
+        font: inherit;
+        cursor: pointer;
+        transition: background 0.15s, border-color 0.15s;
+      }
+      #hud button:hover {
+        background: #1c2f55;
+        border-color: #4a6bc0;
+      }
+      .stat {
+        color: #8fa3cc;
+        white-space: nowrap;
+      }
+      .stat b {
+        color: #e8f0ff;
+        font-weight: 600;
+        margin-left: 4px;
+      }
+      #hint {
+        position: fixed;
+        bottom: 14px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 10;
+        font-size: 12px;
+        color: #6e81a8;
+        background: rgba(10, 14, 26, 0.6);
+        padding: 5px 12px;
+        border-radius: 999px;
+        border: 1px solid rgba(120, 140, 200, 0.2);
+      }
+      #hud .stat {
+        font-size: 12px;
+      }
+      #hud button {
+        font-size: 13px;
+      }
+    </style>
   </head>
   <body>
-    <!--
-      Implement Conway's Game of Life here, following README.md.
+    <div id="app"></div>
 
-      Everything (HTML, CSS, JS) must live in this single file:
-        - no external requests, no libraries, no build step
-        - must run from file:// offline
+    <div id="hud">
+      <button id="play-pause-btn" type="button">Play</button>
+      <button id="step-btn" type="button">Step</button>
+      <span class="stat">Generation <b id="generation">0</b></span>
+      <span class="stat">Population <b id="population">0</b></span>
+    </div>
 
-      Optional: expose `window.gameOfLifeStep(cells)` so glider-test.html
-      can verify your rules automatically (see README.md).
-    -->
+    <div id="hint">Drag to orbit · scroll to zoom · the lattice evolves under B3/S23 in 3D</div>
+
+    <script type="module" src="/src/index.js"></script>
   </body>
 </html>

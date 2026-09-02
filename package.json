@@ -1,0 +1,23 @@
+{
+  "name": "game-of-life-3d",
+  "version": "0.1.0",
+  "private": true,
+  "description": "3D Game of Life scaffold with a shared simulation core and contracts for rule-set, skin, and multiplayer tasks.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "start": "vite preview --host 0.0.0.0",
+    "test": "node --test",
+    "test:watch": "node --test --watch"
+  },
+  "dependencies": {
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "vite": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
