@@ -20,6 +20,8 @@ Open the dev server URL in a browser. You should see a dark 3D scene with an
 orbit camera, a drifting grid floor, and a seeded voxel lattice that evolves
 under Conway B3/S23 extended to the 26-neighbour 3D Moore neighbourhood. Drag
 to orbit, scroll to zoom. The HUD shows the current generation and population.
+Use the **Theme** dropdown in the HUD to switch visual skins live (no reload);
+the active skin is remembered in localStorage and restored on the next visit.
 
 Tests (engine + contracts, no browser needed):
 
@@ -45,6 +47,11 @@ src/
     skin.js                Skin/theme contract + default skin
   scene/
     scene.js               three.js renderer: camera, lights, voxel lattice
+  skins/
+    skins.js               Skin registry (3+ themes; contract-validated)
+    skins.test.js          Registry/panel tests (node --test)
+  ui/
+    skins-panel.js         HUD skin selector + localStorage persistence
   engine/
     simulation.test.js     Engine + pattern tests (node --test)
   contracts/
@@ -85,12 +92,35 @@ neighbours) — this is how the original 2D demo behaviour is preserved and how
 - `src/contracts/simulation.js` — shared world constants (`SIZE`,
   `SEED_DENSITY`, `SPEED`).
 
+## Visual skins
+
+`src/skins/skins.js` registers the visual themes. Each entry is a superset of
+the phase-1 `src/contracts/skin.js` contract (`id/label/description/color/
+emissive/background`) plus renderer fields (`style`, `backgroundTop`, `fog`,
+`grid`, `lights`, `palette`, `cell`). Three skins ship by default:
+
+- **Classic Voxels** — solid amber cubes with warm per-cell age tinting.
+- **Neon Wireframe** — emissive wireframe cages plus additive glow bloom.
+- **Organic** — rounded, soft cells with an ambient green tint.
+
+Live cells are instanced (one draw call per skin), so all three skins stay
+interactive at the default 16×16×16 lattice. The HUD `Theme` dropdown swaps
+skins live; switching never restarts or corrupts the simulation (pattern and
+generation counter are untouched). Choice persists in
+`localStorage["game-of-life-3d:active-skin"]`.
+
+Dying/fading cells are drawn as a short-lived "ghost" layer in each skin's
+`palette.dying` color, and cells that live longer drift through the skin's
+`palette.young → mid → old` age tint — both are cosmetic layers on top of the
+pure engine, so they cannot alter simulation state.
+
 ## Backward compatibility
 
 `glider-test.html` still works unchanged: the demo exposes the classic pure
 2D `window.gameOfLifeStep(cells)` hook (glider, blinker, and block pass).
-The 3D scene itself keeps the old "neon voxel" aesthetic while exposing the
-foundation that later tasks extend.
+The `window.__life3d` handle now exposes `setSkin(id)`, `start/stop/step/
+reset`, `dispose`, `simulation` and `activeSkinId` so HMR and tests can drive
+the same runtime without reloading the page.
 
 ## Notes for contributors
 

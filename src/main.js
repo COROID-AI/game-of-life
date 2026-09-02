@@ -1,34 +1,45 @@
 /**
  * Browser bootstrap for the 3D Game of Life scaffold.
  *
- * Wires the shared simulation core and contracts to the three.js scene:
- *   1. Create a seeded lattice (20% density by default).
- *   2. Mount the 3D scene into a container element.
- *   3. Tick the simulation at SPEED ticks/sec and refresh the voxels.
+ * Wires the shared simulation core, contracts, skin registry and HUD selector
+ * to the three.js scene:
+ *   1. Restore the previously selected skin from localStorage (or default).
+ *   2. Create a seeded lattice (20% density by default).
+ *   3. Mount the 3D scene into a container element.
+ *   4. Tick the simulation at SPEED ticks/sec and refresh the voxels.
+ *   5. Render continuously with requestAnimationFrame so dying fades, glow
+ *      pulses and orbit damping animate smoothly; skin switches rebuild the
+ *      scene's visual layer without touching the simulation state.
  *
  * The engine itself stays headless — this module is the only DOM-aware glue
- * for the demo entrypoint. Later skin/rule/multiplayer tasks can replace or
- * extend this bootstrap without touching src/engine or src/contracts.
+ * for the demo entrypoint.
  */
 
 import { createSimulation } from "./engine/simulation.js";
-import { DEFAULTS, DEFAULT_SKIN } from "./contracts/index.js";
+import { DEFAULTS } from "./contracts/index.js";
 import { createScene } from "./scene/scene.js";
+import { SKINS, DEFAULT_SKIN_ID } from "./skins/skins.js";
+import {
+  createSkinPanel,
+  readStoredSkinId,
+  writeStoredSkinId,
+} from "./ui/skins-panel.js";
 
 /**
  * Boot the demo.
  * @param {HTMLElement} container Target element for the canvas.
  * @param {Object} [options] Overrides `{ size?, seedDensity?, speed?, skin? }`.
- * @returns {Object} `{ simulation, scene, start, stop, step, reset, dispose }`
+ * @returns {Object} `{ simulation, scene, start, stop, step, reset, setSkin,
+ *   dispose, isRunning, activeSkinId }`
  */
 export function main(container, options = {}) {
   const size = options.size ?? DEFAULTS.SIZE;
   const seedDensity = options.seedDensity ?? DEFAULTS.SEED_DENSITY;
   const speed = options.speed ?? DEFAULTS.SPEED;
-  const skin = options.skin ?? DEFAULT_SKIN;
+  const requestedSkinId = (options.skin && options.skin.id) || readStoredSkinId() || DEFAULT_SKIN_ID;
 
   let simulation = createSimulation({ size, seedDensity });
-  let scene = createScene(container, { simulation, skin });
+  let scene = createScene(container, { simulation, skinId: requestedSkinId });
 
   let timer = null;
   let running = false;
@@ -62,6 +73,15 @@ export function main(container, options = {}) {
     timer = null;
   }
 
+  /** Switch the visual skin without touching the running simulation. */
+  function setSkin(skinId) {
+    if (disposed) return false;
+    const applied = scene.applySkin(skinId);
+    if (applied) writeStoredSkinId(skinId);
+    scene.render();
+    return applied;
+  }
+
   /** Clear and re-seed the lattice, then redraw. */
   function reset(density) {
     stop();
@@ -71,12 +91,46 @@ export function main(container, options = {}) {
     return simulation;
   }
 
+  // ---- HUD skin selector ----------------------------------------------------------
+  const panel = createSkinPanel({
+    skins: SKINS,
+    activeId: requestedSkinId,
+    onSelect: setSkin,
+  });
+
+  // ---- Continuous render loop -------------------------------------------------------
+  let rafId = null;
+  function frame() {
+    if (disposed) return;
+    scene.render();
+    rafId = requestAnimationFrame(frame);
+  }
+  rafId = requestAnimationFrame(frame);
+
   /** Tear down timers and the WebGL renderer (used by HMR / tests). */
   function dispose() {
     disposed = true;
     stop();
+    cancelAnimationFrame(rafId);
     scene.dispose();
+    const panelEl = document.querySelector(".skin-panel");
+    if (panelEl?.parentNode) panelEl.parentNode.removeChild(panelEl);
   }
 
-  return { simulation, scene, start, stop, step, reset, dispose, isRunning };
+  start();
+
+  return {
+    simulation,
+    scene,
+    start,
+    stop,
+    step,
+    reset,
+    setSkin,
+    dispose,
+    isRunning,
+    get activeSkinId() {
+      return panel.getActiveId();
+    },
+  };
 }

@@ -55,7 +55,7 @@ const popEl = document.getElementById("population");
 function updateHud() {
   if (genEl) genEl.textContent = String(handle.simulation.generation);
   if (popEl) popEl.textContent = String(handle.simulation.population);
-  if (playPauseBtn) playPauseBtn.textContent = handle.simulation.running ? "Pause" : "Play";
+  if (playPauseBtn) playPauseBtn.textContent = handle.isRunning() ? "Pause" : "Play";
 }
 
 if (playPauseBtn) {
@@ -73,6 +73,4 @@ if (stepBtn) {
 }
 
 setInterval(updateHud, 200);
-
-handle.start();
 updateHud();
