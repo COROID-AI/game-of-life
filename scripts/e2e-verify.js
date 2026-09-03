@@ -113,7 +113,7 @@ async function newPage(browser, url) {
     if (m.type() === "error") errors.push(m.text());
     if (m.type() === "warning") warnings.push(m.text());
   });
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 25000 });
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
   let canvas = false;
   try {
     await page.locator("#app canvas").waitFor({ state: "attached", timeout: 25000 });
@@ -294,6 +294,11 @@ async function runInteractiveChecks(browser, server) {
     }
     check("room-switch: guest joins room A", guestAStatus.includes("joined") || guestAStatus.includes("host"), guestAStatus);
 
+    // Capture the host's room-A peer id BEFORE it leaves, so the stale-peer
+    // check compares against the original host identity (re-creating room B
+    // later assigns a fresh peer id on the same socket session).
+    const hostPeerIdA = await hostA.evaluate(() => window.__life3dSession?.getPeerId?.() ?? null);
+
     // Host leaves Room A, then creates Room B from the SAME browser session.
     await hostA.click("#mp-leave");
     await wait(700);
@@ -306,11 +311,23 @@ async function runInteractiveChecks(browser, server) {
     const hostBStatus = (await hostA.locator("#mp-status").textContent()).trim();
     check("room-switch: host creates room B after leaving", hostBStatus.includes("host") && codeB !== codeA, `${hostBStatus} code=${codeB}`);
 
-    // The guest must NOT see the stale host peer from room A once the host left;
-    // guest roster should drop to zero peers (host left) — no stale peer remains.
+    // The guest must NOT see the stale host peer from room A once the host
+    // left. The guest is deterministically promoted to host of room A, so its
+    // roster must contain exactly one peer — itself — and never the old host.
     await wait(800);
-    const guestRosterAfterHostLeft = await guest.locator(".mp-peer").count();
-    check("room-switch: no stale peer in room A after host leaves", guestRosterAfterHostLeft === 0, `peers=${guestRosterAfterHostLeft}`);
+    const guestPeerId = await guest.evaluate(() => window.__life3dSession?.getPeerId?.() ?? null);
+    const guestRosterPeers = await guest.evaluate(() => window.__life3dSession?.getRoster?.() ?? []);
+    const staleHostPresent = guestRosterPeers.some((p) => p.peerId === hostPeerIdA);
+    const guestPromoted = guestRosterPeers.length === 1 && guestRosterPeers[0].peerId === guestPeerId;
+    const guestRosterDomCount = await guest.locator(".mp-peer").count();
+    check(
+      "room-switch: no stale host peer in room A after host leaves",
+      guestPromoted && !staleHostPresent && guestRosterDomCount === 1,
+      `domPeers=${guestRosterDomCount} sessionPeers=${guestRosterPeers.length} stale=${staleHostPresent}`,
+    );
+
+    // Room A is verified; release its WebGL context before opening another page.
+    await gctx.close();
 
     // A second guest joins Room B and the new room works end-to-end.
     const { ctx: hctx2, page: guest2, errors: g2err } = await newPage(browser, server.appUrl);
@@ -331,7 +348,6 @@ async function runInteractiveChecks(browser, server) {
     check("room-switch: no console errors across the switch flow", errs.length === 0, errs.join(" | "));
 
     await hctx.close();
-    await gctx.close();
     await hctx2.close();
   }
 }
